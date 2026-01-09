@@ -173,6 +173,8 @@ export async function createRunResult(
   data: {
     date: Date;
     photoBlob: Blob;
+    title?: string;
+    description?: string;
     participants: Array<{
       runnerId: string;
       smallLoops: number;
@@ -199,6 +201,8 @@ export async function createRunResult(
     const stagingData = {
       date: data.date.toISOString(),
       mainPhoto: photoUrl,
+      title: data.title || undefined,
+      body: data.description || undefined,
       participants: data.participants.map((p) => ({
         runner: p.runnerId.startsWith('guest-') ? 'guest' : p.runnerId,
         smallLoops: p.smallLoops,

@@ -35,6 +35,10 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
   // Race photo state
   const [racePhoto, setRacePhoto] = useState<File | null>(null);
 
+  // Custom Run Details
+  const [runTitle, setRunTitle] = useState('');
+  const [runDescription, setRunDescription] = useState('');
+
   // Load runners on mount
   useEffect(() => {
     const load = async () => {
@@ -357,9 +361,11 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
           smallLoops: p.smallLoops,
           mediumLoops: p.mediumLoops,
           longLoops: p.longLoops,
-          startTime: p.startTime,
-          endTime: p.startTime + (p.finishTime || elapsedTime),
+          startTime: p.startTime!,
+          endTime: p.startTime! + (p.finishTime || 0),
         })),
+        title: runTitle,
+        description: runDescription
       });
 
       alert('Results saved successfully!');
@@ -369,6 +375,8 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
       setParticipants([]);
       setElapsedTime(0);
       setRacePhoto(null);
+      setRunTitle('');
+      setRunDescription('');
       setImmersiveMode?.(false);
       localStorage.removeItem('current_run_state');
     } catch (error) {
@@ -535,6 +543,46 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
           </div>
 
 
+        <div className="space-y-4">
+          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
+            <h2 className="text-2xl font-bold mb-4">Run Complete! 🏁</h2>
+            <div className="text-4xl font-mono font-bold text-green mb-2">
+              {/* If we have an exact time from handleEndRun, we could use it, but elapsedTime is fine */}
+              {/* Note: In review state, elapsedTime holds the final time */}
+              {Math.floor(elapsedTime / 60000)}:
+              {((elapsedTime % 60000) / 1000).toFixed(0).padStart(2, '0')}
+            </div>
+            <p className="text-gray-400">
+              {participants.filter(p => p.status === 'completed').length} finishers
+            </p>
+          </div>
+
+          {/* Custom Run Details */}
+          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6 space-y-4">
+             <h3 className="font-semibold mb-2">Run Details (Optional)</h3>
+
+             <div>
+               <label className="block text-sm text-gray-400 mb-1">Title</label>
+               <input
+                 type="text"
+                 value={runTitle}
+                 onChange={(e) => setRunTitle(e.target.value)}
+                 placeholder="e.g. Muddy Mayhem (Optional)"
+                 className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:border-orange focus:outline-none"
+               />
+             </div>
+
+             <div>
+               <label className="block text-sm text-gray-400 mb-1">Description / Race Report</label>
+               <textarea
+                 value={runDescription}
+                 onChange={(e) => setRunDescription(e.target.value)}
+                 placeholder="How was the run? Any highlights?"
+                 className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:border-orange focus:outline-none h-24 resize-none"
+               />
+             </div>
+          </div>
+
         {/* Photo Upload */}
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
           <h3 className="font-semibold mb-4">Race Photo 📸</h3>
@@ -567,6 +615,8 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
                />
             </div>
           )}
+        </div>
+
         </div>
 
         <div className="flex gap-4">
