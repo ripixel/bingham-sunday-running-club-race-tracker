@@ -5,25 +5,52 @@ import type { LiveParticipant } from '../../types/result';
 interface LapCounterProps {
   participant: LiveParticipant;
   globalElapsedTime: number;
-  onUpdateLoops: (runnerId: string, loopType: 'small' | 'medium' | 'long', delta: number) => void;
+  onUpdateLoops: (runnerId: string, type: 'small' | 'medium' | 'long', delta: number) => void;
   onFinish: (runnerId: string) => void;
-  onUnfinish: (runnerId: string) => void;
+  onComplete: (runnerId: string) => void;
+  onUndoComplete: (runnerId: string) => void;
+  onResume: (runnerId: string) => void;
 }
+
+// Helper function for distance calculation
+const calculateDistance = (smallLoops: number, mediumLoops: number, longLoops: number): number => {
+  return (
+    smallLoops * LOOP_DISTANCES.small +
+    mediumLoops * LOOP_DISTANCES.medium +
+    longLoops * LOOP_DISTANCES.long
+  );
+};
 
 export function LapCounter({
   participant,
   globalElapsedTime,
   onUpdateLoops,
   onFinish,
-  onUnfinish,
+  onComplete,
+  onUndoComplete,
+  onResume,
 }: LapCounterProps) {
-  const { runnerId, runnerName, smallLoops, mediumLoops, longLoops, finished, finishTime } = participant;
+  const {
+    runnerId,
+    runnerName,
+    smallLoops,
+    mediumLoops,
+    longLoops,
+    finishTime,
+    status
+  } = participant;
 
-  // Calculate distance (loops only, no approach)
-  const distance =
-    smallLoops * LOOP_DISTANCES.small +
-    mediumLoops * LOOP_DISTANCES.medium +
-    longLoops * LOOP_DISTANCES.long;
+  // If status is not set (legacy), derive from finished boolean if it exists, or default to running
+  const currentStatus = status || ((participant as any).finished ? 'completed' : 'running');
+
+  // Calculate elapsed time for this runner
+  // If finished/completed, use fixed finishTime
+  // If running, use global elapsed time
+  const elapsedTime = (currentStatus === 'finished' || currentStatus === 'completed') && finishTime !== undefined
+    ? finishTime
+    : globalElapsedTime;
+
+  const distance = calculateDistance(smallLoops, mediumLoops, longLoops);
 
   // Format elapsed time
   const formatTime = (ms: number): string => {
@@ -33,133 +60,157 @@ export function LapCounter({
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const elapsedTime = finished && finishTime ? finishTime : globalElapsedTime;
+  // Status-based styles
+  const containerClasses = {
+    running: 'bg-gray-800 border-gray-700',
+    finished: 'bg-orange/10 border-orange ring-1 ring-orange/50', // Highlighted state for data entry
+    completed: 'bg-green/5 border-green/30 opacity-75',
+  };
 
   return (
     <div
       className={`
-        rounded-lg p-4 border-2 transition-all
-        ${finished
-          ? 'bg-green/10 border-green'
-          : 'bg-gray-800 border-gray-700'
-        }
+        rounded-lg p-2 border shadow-sm transition-all relative
+        ${containerClasses[currentStatus]}
       `}
     >
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="font-bold text-lg">{runnerName}</h3>
-          <p className="text-sm text-gray-400">{runnerId}</p>
+      <div className="flex items-start justify-between mb-2">
+        <div className="min-w-0 pr-2">
+          <h3 className="font-bold text-base truncate leading-tight">{runnerName}</h3>
+          {(currentStatus === 'running' || currentStatus === 'finished') && (
+            <p className="text-xs text-gray-400 truncate">{runnerId}</p>
+          )}
         </div>
-        <div className="text-right">
-          <div className="text-2xl font-mono font-bold">
-            {distance.toFixed(1)} km
+        <div className="text-right flex-shrink-0">
+          <div className="text-lg font-mono font-bold leading-tight">
+            {distance.toFixed(1)} <span className="text-sm font-normal text-gray-400">km</span>
           </div>
-          <div className="text-sm text-gray-400">
+          <div className={`text-xs font-mono ${currentStatus === 'running' ? 'text-gray-400' : 'text-white font-bold'}`}>
             {formatTime(elapsedTime)}
           </div>
         </div>
       </div>
 
-      {/* Loop Counters */}
-      {!finished && (
-        <div className="grid grid-cols-3 gap-2 mb-4">
+      {/* Loop Counters - Only visible for Finished (Timer Stopped) state */}
+      {currentStatus === 'finished' && (
+        <div className="flex justify-between gap-1 mb-2">
           {/* Small Loop */}
-          <div className="text-center">
-            <div className="text-xs text-pink mb-1">Small ({LOOP_DISTANCES.small}km)</div>
+          <div className="flex-1 bg-gray-900/50 rounded p-1 text-center">
+            <div className="text-[10px] uppercase font-bold text-pink mb-1">Small</div>
             <div className="flex items-center justify-center gap-1">
-              <Button
+              <button
                 onClick={() => onUpdateLoops(runnerId, 'small', -1)}
-                variant="secondary"
-                size="sm"
                 disabled={smallLoops === 0}
-                className="w-10 h-10"
+                className="w-6 h-6 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-sm"
               >
                 −
-              </Button>
-              <span className="text-xl font-bold w-8 text-center">{smallLoops}</span>
-              <Button
+              </button>
+              <span className="font-mono font-bold w-5 text-center text-sm">{smallLoops}</span>
+              <button
                 onClick={() => onUpdateLoops(runnerId, 'small', 1)}
-                variant="danger"
-                size="sm"
-                className="w-10 h-10"
+                className="w-6 h-6 flex items-center justify-center rounded bg-pink hover:bg-pink/90 text-white text-sm shadow-sm"
               >
                 +
-              </Button>
+              </button>
             </div>
           </div>
 
           {/* Medium Loop */}
-          <div className="text-center">
-            <div className="text-xs text-green mb-1">Medium ({LOOP_DISTANCES.medium}km)</div>
+          <div className="flex-1 bg-gray-900/50 rounded p-1 text-center">
+            <div className="text-[10px] uppercase font-bold text-green mb-1">Med</div>
             <div className="flex items-center justify-center gap-1">
-              <Button
+              <button
                 onClick={() => onUpdateLoops(runnerId, 'medium', -1)}
-                variant="secondary"
-                size="sm"
                 disabled={mediumLoops === 0}
-                className="w-10 h-10"
+                className="w-6 h-6 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-sm"
               >
                 −
-              </Button>
-              <span className="text-xl font-bold w-8 text-center">{mediumLoops}</span>
-              <Button
+              </button>
+              <span className="font-mono font-bold w-5 text-center text-sm">{mediumLoops}</span>
+              <button
                 onClick={() => onUpdateLoops(runnerId, 'medium', 1)}
-                variant="success"
-                size="sm"
-                className="w-10 h-10"
+                className="w-6 h-6 flex items-center justify-center rounded bg-green hover:bg-green/90 text-white text-sm shadow-sm"
               >
                 +
-              </Button>
+              </button>
             </div>
           </div>
 
           {/* Long Loop */}
-          <div className="text-center">
-            <div className="text-xs text-blue mb-1">Long ({LOOP_DISTANCES.long}km)</div>
+          <div className="flex-1 bg-gray-900/50 rounded p-1 text-center">
+            <div className="text-[10px] uppercase font-bold text-blue mb-1">Long</div>
             <div className="flex items-center justify-center gap-1">
-              <Button
+              <button
                 onClick={() => onUpdateLoops(runnerId, 'long', -1)}
-                variant="secondary"
-                size="sm"
                 disabled={longLoops === 0}
-                className="w-10 h-10"
+                className="w-6 h-6 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-sm"
               >
                 −
-              </Button>
-              <span className="text-xl font-bold w-8 text-center">{longLoops}</span>
-              <Button
+              </button>
+              <span className="font-mono font-bold w-5 text-center text-sm">{longLoops}</span>
+              <button
                 onClick={() => onUpdateLoops(runnerId, 'long', 1)}
-                variant="primary"
-                size="sm"
-                className="w-10 h-10 bg-blue hover:bg-blue/90"
+                className="w-6 h-6 flex items-center justify-center rounded bg-blue hover:bg-blue/90 text-white text-sm shadow-sm"
               >
                 +
-              </Button>
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Finish Button */}
-      <div className="mt-4">
-        {finished ? (
-          <Button
-            onClick={() => onUnfinish(runnerId)}
-            variant="secondary"
-            size="sm"
-            className="w-full"
-          >
-            ↩ Undo Finish
-          </Button>
-        ) : (
+      {/* Read-only loop summary for Running/Completed */}
+      {currentStatus !== 'finished' && (
+        <div className="flex justify-between text-xs text-gray-400 mb-2 px-2">
+           <span>S: {smallLoops}</span>
+           <span>M: {mediumLoops}</span>
+           <span>L: {longLoops}</span>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div>
+        {currentStatus === 'running' && (
           <Button
             onClick={() => onFinish(runnerId)}
-            variant="success"
-            size="lg"
-            className="w-full"
+            variant="danger" // Red for STOP
+            size="sm"
+            className="w-full py-1 h-8 min-h-0 text-sm font-bold shadow-sm animate-pulse-slow"
           >
-            🏁 Finish
+            ⏹ Stop Timer
+          </Button>
+        )}
+
+        {currentStatus === 'finished' && (
+          <div className="flex gap-2">
+            <Button
+              onClick={() => onResume(runnerId)}
+              variant="secondary"
+              size="sm"
+              className="flex-1 py-1 h-8 min-h-0 text-xs"
+            >
+              ↩ Resume
+            </Button>
+            <Button
+              onClick={() => onComplete(runnerId)}
+              variant="success"
+              size="sm"
+              className="flex-[2] py-1 h-8 min-h-0 text-sm font-bold shadow-sm"
+            >
+              ✓ Complete
+            </Button>
+          </div>
+        )}
+
+        {currentStatus === 'completed' && (
+          <Button
+             onClick={() => onUndoComplete(runnerId)}
+             variant="secondary"
+             size="sm"
+             className="w-full text-xs py-1 h-8 min-h-0 opacity-50 hover:opacity-100"
+          >
+            ↩ Edit (Undo)
           </Button>
         )}
       </div>

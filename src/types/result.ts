@@ -74,6 +74,7 @@ export interface RunResult {
  */
 export interface LiveParticipant {
   runnerId: string; // Runner ID or "guest"
+  repoId?: string; // Original ID to use when committing (e.g. 'guest')
   runnerName: string; // Display name
   runnerPhoto?: string; // Photo URL
   nickname?: string; // Runtime nickname for guests
@@ -82,6 +83,6 @@ export interface LiveParticipant {
   longLoops: number;
   startTime: number; // Timestamp in ms
   finishTime?: number; // Elapsed time in ms when finished
-  finished: boolean;
+  status: 'running' | 'finished' | 'completed';
 }
 

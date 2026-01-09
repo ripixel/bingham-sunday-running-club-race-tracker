@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Octokit } from 'octokit';
 import { Button } from '../components/ui/Button';
+import { Timer } from '../components/ui/Timer';
 import { RunnerSelector } from '../components/tracker/RunnerSelector';
 import { TrackerGrid } from '../components/tracker/TrackerGrid';
 import { fetchRunners, createRunResult } from '../lib/github';
@@ -65,7 +66,7 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
   };
 
   // Handle starting the run
-  const handleStartRun = (selectedRunners: TrackedRunner[], _guestCount: number) => {
+  const handleStartRun = (selectedRunners: TrackedRunner[]) => {
     const now = Date.now();
     setStartTime(now);
     setIsRunning(true);
@@ -73,13 +74,15 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
 
     // Create live participants from selected runners
     const liveParticipants: LiveParticipant[] = selectedRunners.map((runner) => ({
-      runnerId: runner.id.startsWith('guest-') ? 'guest' : runner.id,
+      runnerId: runner.id, // ID is now guaranteed unique (regular ID or guest-timestamp)
+      // For guests, we write "guest" to the repo later, but keep unique ID for tracking state
+      repoId: runner.id.startsWith('guest-') ? 'guest' : runner.id,
       runnerName: runner.nickname || runner.name,
       smallLoops: 0,
       mediumLoops: 0,
       longLoops: 0,
       startTime: now,
-      finished: false,
+      status: 'running',
     }));
 
     setParticipants(liveParticipants);
@@ -89,11 +92,7 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
   const handleUpdateLoops = useCallback((runnerId: string, loopType: 'small' | 'medium' | 'long', delta: number) => {
     setParticipants((prev) =>
       prev.map((p) => {
-        // Match by runnerName for guests (e.g., "Guest 1"), or by runnerId for regular runners
-        const isGuestMatch = runnerId.startsWith('guest-') && p.runnerName === `Guest ${runnerId.split('-')[1]}`;
-        const isRegularMatch = !runnerId.startsWith('guest-') && p.runnerId === runnerId;
-
-        if (isGuestMatch || isRegularMatch) {
+        if (p.runnerId === runnerId) {
           const key = `${loopType}Loops` as 'smallLoops' | 'mediumLoops' | 'longLoops';
           return {
             ...p,
@@ -105,18 +104,15 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
     );
   }, []);
 
-  // Mark runner as finished
+  // Mark runner as finished (STOP TIMER only)
   const handleFinish = useCallback((runnerId: string) => {
     const now = Date.now();
     setParticipants((prev) =>
       prev.map((p) => {
-        const isGuestMatch = runnerId.startsWith('guest-') && p.runnerName === `Guest ${runnerId.split('-')[1]}`;
-        const isRegularMatch = !runnerId.startsWith('guest-') && p.runnerId === runnerId;
-
-        if (isGuestMatch || isRegularMatch) {
+        if (p.runnerId === runnerId) {
           return {
             ...p,
-            finished: true,
+            status: 'finished', // Pending info entry
             finishTime: now - startTime,
           };
         }
@@ -125,18 +121,45 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
     );
   }, [startTime]);
 
-  // Undo finish
-  const handleUnfinish = useCallback((runnerId: string) => {
+  // Mark runner as completed (Info gathered, move to bottom)
+  const handleComplete = useCallback((runnerId: string) => {
     setParticipants((prev) =>
       prev.map((p) => {
-        const isGuestMatch = runnerId.startsWith('guest-') && p.runnerName === `Guest ${runnerId.split('-')[1]}`;
-        const isRegularMatch = !runnerId.startsWith('guest-') && p.runnerId === runnerId;
-
-        if (isGuestMatch || isRegularMatch) {
+        if (p.runnerId === runnerId) {
           return {
             ...p,
-            finished: false,
+            status: 'completed',
+          };
+        }
+        return p;
+      })
+    );
+  }, []);
+
+  // Resume runner (Undo Finish)
+  const handleResume = useCallback((runnerId: string) => {
+    setParticipants((prev) =>
+      prev.map((p) => {
+        if (p.runnerId === runnerId) {
+          return {
+            ...p,
+            status: 'running',
             finishTime: undefined,
+          };
+        }
+        return p;
+      })
+    );
+  }, []);
+
+  // Undo complete (Move back to finished/pending info)
+  const handleUndoComplete = useCallback((runnerId: string) => {
+    setParticipants((prev) =>
+      prev.map((p) => {
+        if (p.runnerId === runnerId) {
+          return {
+            ...p,
+            status: 'finished',
           };
         }
         return p;
@@ -163,7 +186,7 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
         mainPhoto: '/images/placeholder.jpg',
         isSpecialEvent: false,
         participants: participants.map((p) => ({
-          runnerId: p.runnerId,
+          runnerId: p.repoId || (p.runnerId.startsWith('guest-') ? 'guest' : p.runnerId),
           smallLoops: p.smallLoops,
           mediumLoops: p.mediumLoops,
           longLoops: p.longLoops,
@@ -201,38 +224,25 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
 
   // Running state - track loops
   if (state === 'running') {
-    const allFinished = participants.every((p) => p.finished);
+    const allCompleted = participants.every((p) => p.status === 'completed');
 
     return (
+
       <div>
-        {/* Timer Display */}
-        <div className="bg-gray-800 rounded-lg p-6 mb-6 border-4 border-green">
-          <div className="flex items-center justify-between">
-            <div className="text-center flex-1">
-              <div className="text-5xl font-bold font-mono text-green">
-                {formatTime(elapsedTime)}
-              </div>
-              <p className="text-gray-400 text-sm mt-1">Global Timer</p>
-            </div>
-            <div className="flex gap-4">
-              <Button onClick={() => setIsRunning(!isRunning)} variant="secondary">
-                {isRunning ? 'Pause' : 'Resume'}
-              </Button>
-              <Button
-                onClick={handleEndRun}
-                variant="danger"
-                disabled={!allFinished}
-              >
-                End Run
-              </Button>
-            </div>
-          </div>
-          {!allFinished && (
-            <p className="text-center text-sm text-gray-400 mt-4">
-              All runners must finish before ending the run
-            </p>
-          )}
-        </div>
+        <Timer
+          elapsedTime={elapsedTime}
+          isRunning={isRunning}
+          onPause={() => setIsRunning(false)}
+          onResume={() => setIsRunning(true)}
+          onEnd={handleEndRun}
+          canEnd={allCompleted}
+        />
+
+        {!allCompleted && (
+          <p className="text-center text-sm text-gray-400 mb-6">
+             ℹ️  All runners must be marked as <b>Completed</b> (Green) before you can end the run.
+          </p>
+        )}
 
         {/* Tracker Grid */}
         <TrackerGrid
@@ -240,7 +250,9 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
           globalElapsedTime={elapsedTime}
           onUpdateLoops={handleUpdateLoops}
           onFinish={handleFinish}
-          onUnfinish={handleUnfinish}
+          onComplete={handleComplete}
+          onUndoComplete={handleUndoComplete}
+          onResume={handleResume}
         />
       </div>
     );

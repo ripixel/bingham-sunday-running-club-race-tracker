@@ -1,7 +1,7 @@
 import { Octokit } from 'octokit';
 import { GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH } from './config';
 import type { Runner } from '../types/runner';
-import type { Participant } from '../types/result';
+// import type { Participant } from '../types/result';
 
 /**
  * Create Octokit instance with auth token
@@ -106,29 +106,30 @@ export async function createRunner(
   }
 }
 
-/**
- * Format time in MM:SS format
- */
-function formatTime(milliseconds: number): string {
-  const totalSeconds = Math.floor(milliseconds / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-}
+// /**
+//  * Format time in MM:SS format
+//  */
+// function formatTime(milliseconds: number): string {
+//   const totalSeconds = Math.floor(milliseconds / 1000);
+//   const minutes = Math.floor(totalSeconds / 60);
+//   const seconds = totalSeconds % 60;
+//   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+// }
 
-/**
- * Calculate total distance from loop counts
- */
-function calculateDistance(smallLoops: number, mediumLoops: number, longLoops: number): number {
-  return smallLoops * 0.8 + mediumLoops * 1.0 + longLoops * 1.2;
-}
+// /**
+//  * Calculate total distance from loop counts
+//  */
+// function calculateDistance(smallLoops: number, mediumLoops: number, longLoops: number): number {
+//   return smallLoops * 0.8 + mediumLoops * 1.0 + longLoops * 1.2;
+// }
 
 /**
  * Create a run result file in the repository
+ * COMMENTED OUT WHILE DEVELOPING FUNCTIONALITY
  */
 export async function createRunResult(
-  octokit: Octokit,
-  result: {
+  _octokit: Octokit,
+  _result: {
     date: Date;
     title: string;
     eventTitle: string;
@@ -148,74 +149,74 @@ export async function createRunResult(
     body?: string;
   }
 ): Promise<void> {
-  try {
-    // Format date for filename and frontmatter
-    const dateStr = result.date.toISOString().split('T')[0]; // YYYY-MM-DD
-    const isoDateTime = result.date.toISOString();
+  // try {
+  //   // Format date for filename and frontmatter
+  //   const dateStr = result.date.toISOString().split('T')[0]; // YYYY-MM-DD
+  //   const isoDateTime = result.date.toISOString();
 
-    // Build participants array
-    const participants: Participant[] = result.participants.map((p) => ({
-      runner: p.runnerId,
-      distance: parseFloat(calculateDistance(p.smallLoops, p.mediumLoops, p.longLoops).toFixed(1)),
-      smallLoops: p.smallLoops,
-      mediumLoops: p.mediumLoops,
-      longLoops: p.longLoops,
-      time: formatTime(p.endTime - p.startTime),
-    }));
+  //   // Build participants array
+  //   const participants: Participant[] = result.participants.map((p) => ({
+  //     runner: p.runnerId,
+  //     distance: parseFloat(calculateDistance(p.smallLoops, p.mediumLoops, p.longLoops).toFixed(1)),
+  //     smallLoops: p.smallLoops,
+  //     mediumLoops: p.mediumLoops,
+  //     longLoops: p.longLoops,
+  //     time: formatTime(p.endTime - p.startTime),
+  //   }));
 
-    // Build YAML frontmatter
-    const frontmatter = {
-      date: isoDateTime,
-      title: result.title,
-      eventTitle: result.eventTitle,
-      eventDescription: result.eventDescription,
-      location: result.location,
-      mainPhoto: result.mainPhoto,
-      weather: result.weather,
-      isSpecialEvent: result.isSpecialEvent,
-      participants,
-    };
+  //   // Build YAML frontmatter
+  //   const frontmatter = {
+  //     date: isoDateTime,
+  //     title: result.title,
+  //     eventTitle: result.eventTitle,
+  //     eventDescription: result.eventDescription,
+  //     location: result.location,
+  //     mainPhoto: result.mainPhoto,
+  //     weather: result.weather,
+  //     isSpecialEvent: result.isSpecialEvent,
+  //     participants,
+  //   };
 
-    // Convert to YAML string (simple approach)
-    const yamlLines = ['---'];
-    yamlLines.push(`date: ${frontmatter.date}`);
-    yamlLines.push(`title: "${frontmatter.title}"`);
-    yamlLines.push(`eventTitle: "${frontmatter.eventTitle}"`);
-    if (frontmatter.eventDescription) {
-      yamlLines.push(`eventDescription: "${frontmatter.eventDescription}"`);
-    }
-    yamlLines.push(`location: "${frontmatter.location}"`);
-    yamlLines.push(`mainPhoto: "${frontmatter.mainPhoto}"`);
-    if (frontmatter.weather) {
-      yamlLines.push(`weather: "${frontmatter.weather}"`);
-    }
-    yamlLines.push(`isSpecialEvent: ${frontmatter.isSpecialEvent}`);
-    yamlLines.push('participants:');
+  //   // Convert to YAML string (simple approach)
+  //   const yamlLines = ['---'];
+  //   yamlLines.push(`date: ${frontmatter.date}`);
+  //   yamlLines.push(`title: "${frontmatter.title}"`);
+  //   yamlLines.push(`eventTitle: "${frontmatter.eventTitle}"`);
+  //   if (frontmatter.eventDescription) {
+  //     yamlLines.push(`eventDescription: "${frontmatter.eventDescription}"`);
+  //   }
+  //   yamlLines.push(`location: "${frontmatter.location}"`);
+  //   yamlLines.push(`mainPhoto: "${frontmatter.mainPhoto}"`);
+  //   if (frontmatter.weather) {
+  //     yamlLines.push(`weather: "${frontmatter.weather}"`);
+  //   }
+  //   yamlLines.push(`isSpecialEvent: ${frontmatter.isSpecialEvent}`);
+  //   yamlLines.push('participants:');
 
-    participants.forEach((p) => {
-      yamlLines.push(`  - runner: "${p.runner}"`);
-      yamlLines.push(`    distance: ${p.distance}`);
-      yamlLines.push(`    smallLoops: ${p.smallLoops}`);
-      yamlLines.push(`    mediumLoops: ${p.mediumLoops}`);
-      yamlLines.push(`    longLoops: ${p.longLoops}`);
-      yamlLines.push(`    time: "${p.time}"`);
-    });
+  //   participants.forEach((p) => {
+  //     yamlLines.push(`  - runner: "${p.runner}"`);
+  //     yamlLines.push(`    distance: ${p.distance}`);
+  //     yamlLines.push(`    smallLoops: ${p.smallLoops}`);
+  //     yamlLines.push(`    mediumLoops: ${p.mediumLoops}`);
+  //     yamlLines.push(`    longLoops: ${p.longLoops}`);
+  //     yamlLines.push(`    time: "${p.time}"`);
+  //   });
 
-    yamlLines.push('---');
+  //   yamlLines.push('---');
 
-    const content = yamlLines.join('\n') + '\n' + (result.body || '');
-    const path = `content/results/${dateStr}.md`;
+  //   const content = yamlLines.join('\n') + '\n' + (result.body || '');
+  //   const path = `content/results/${dateStr}.md`;
 
-    await octokit.rest.repos.createOrUpdateFileContents({
-      owner: GITHUB_OWNER,
-      repo: GITHUB_REPO,
-      path,
-      message: `feat(content): Create run result "${result.title}"`,
-      content: base64Encode(content),
-      branch: GITHUB_BRANCH,
-    });
-  } catch (error) {
-    console.error('Failed to create run result:', error);
-    throw error;
-  }
+  //   await octokit.rest.repos.createOrUpdateFileContents({
+  //     owner: GITHUB_OWNER,
+  //     repo: GITHUB_REPO,
+  //     path,
+  //     message: `feat(content): Create run result "${result.title}"`,
+  //     content: base64Encode(content),
+  //     branch: GITHUB_BRANCH,
+  //   });
+  // } catch (error) {
+  //   console.error('Failed to create run result:', error);
+  //   throw error;
+  // }
 }

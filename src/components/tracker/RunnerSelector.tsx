@@ -1,15 +1,17 @@
+
 import { useState } from 'react';
 import type { Runner, TrackedRunner } from '../../types/runner';
 import { Button } from '../ui/Button';
 
 interface RunnerSelectorProps {
   runners: Runner[];
-  onStartRun: (selectedRunners: TrackedRunner[], guestCount: number) => void;
+  onStartRun: (selectedRunners: TrackedRunner[]) => void;
 }
 
 export function RunnerSelector({ runners, onStartRun }: RunnerSelectorProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [guestCount, setGuestCount] = useState(0);
+  const [guestName, setGuestName] = useState('');
+  const [guests, setGuests] = useState<TrackedRunner[]>([]);
 
   const toggleRunner = (id: string) => {
     const newSelected = new Set(selectedIds);
@@ -21,25 +23,37 @@ export function RunnerSelector({ runners, onStartRun }: RunnerSelectorProps) {
     setSelectedIds(newSelected);
   };
 
+  const addGuest = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!guestName.trim()) return;
+
+    const newGuest: TrackedRunner = {
+      id: `guest-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: 'Guest',
+      anonymous: true,
+      nickname: guestName.trim(),
+    };
+
+    setGuests([...guests, newGuest]);
+    setGuestName('');
+  };
+
+  const removeGuest = (guestId: string) => {
+    setGuests(guests.filter(g => g.id !== guestId));
+  };
+
   const handleStart = () => {
     const selectedRunners: TrackedRunner[] = runners
       .filter((r) => selectedIds.has(r.id))
       .map((r) => ({ ...r }));
 
-    // Add guest runners
-    for (let i = 0; i < guestCount; i++) {
-      selectedRunners.push({
-        id: `guest-${i + 1}`,
-        name: 'Guest',
-        anonymous: true,
-        nickname: `Guest ${i + 1}`,
-      });
-    }
+    // Combine regular runners and named guests
+    const allRunners = [...selectedRunners, ...guests];
 
-    onStartRun(selectedRunners, guestCount);
+    onStartRun(allRunners);
   };
 
-  // Filter out the special "guest" runner from the list
+  // Filter out the special "guest" runner from the list to avoid duplicate counting
   const regularRunners = runners.filter((r) => r.id !== 'guest');
 
   return (
@@ -90,30 +104,40 @@ export function RunnerSelector({ runners, onStartRun }: RunnerSelectorProps) {
         ))}
       </div>
 
-      {/* Guest Count */}
+      {/* Guest Management */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
-        <h3 className="font-semibold mb-3">Guest Runners</h3>
-        <div className="flex items-center gap-4">
-          <Button
-            onClick={() => setGuestCount(Math.max(0, guestCount - 1))}
-            variant="secondary"
-            size="lg"
-            disabled={guestCount === 0}
-          >
-            −
+        <h3 className="font-semibold mb-4 text-green">Guest Runners</h3>
+
+        <form onSubmit={addGuest} className="flex gap-2 mb-4">
+          <input
+            type="text"
+            value={guestName}
+            onChange={(e) => setGuestName(e.target.value)}
+            placeholder="Enter guest name (e.g. 'Dave friend of Sarah')"
+            className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:border-orange"
+          />
+          <Button type="submit" variant="secondary" disabled={!guestName.trim()}>
+            + Add Guest
           </Button>
-          <span className="text-3xl font-bold w-16 text-center">{guestCount}</span>
-          <Button
-            onClick={() => setGuestCount(guestCount + 1)}
-            variant="secondary"
-            size="lg"
-          >
-            +
-          </Button>
-          <span className="text-gray-400 ml-4">
-            {guestCount === 0 ? 'No guests' : `${guestCount} guest${guestCount > 1 ? 's' : ''}`}
-          </span>
-        </div>
+        </form>
+
+        {guests.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {guests.map((guest) => (
+              <div key={guest.id} className="flex items-center justify-between p-3 bg-gray-700 rounded border border-gray-600">
+                <span className="font-medium">{guest.nickname}</span>
+                <button
+                  onClick={() => removeGuest(guest.id)}
+                  className="text-pink hover:text-white px-2"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">No guests added yet.</p>
+        )}
       </div>
 
       {/* Start Button */}
@@ -122,12 +146,13 @@ export function RunnerSelector({ runners, onStartRun }: RunnerSelectorProps) {
           onClick={handleStart}
           variant="success"
           size="lg"
-          disabled={selectedIds.size === 0 && guestCount === 0}
+          disabled={selectedIds.size === 0 && guests.length === 0}
           className="px-12"
         >
-          Start Run ({selectedIds.size + guestCount} runner{selectedIds.size + guestCount !== 1 ? 's' : ''})
+          Start Run ({selectedIds.size + guests.length} runner{selectedIds.size + guests.length !== 1 ? 's' : ''})
         </Button>
       </div>
     </div>
   );
 }
+
