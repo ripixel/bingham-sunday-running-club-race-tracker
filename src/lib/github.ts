@@ -106,6 +106,9 @@ export async function createRunner(
     const content = JSON.stringify(runner, null, 2);
     const path = `content/runners/${runner.id}.json`;
 
+    // Check if file exists and get its SHA
+    const sha = await getFileSha(octokit, path);
+
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: GITHUB_OWNER,
       repo: GITHUB_REPO,
@@ -113,9 +116,38 @@ export async function createRunner(
       message: `feat(content): Create runner "${runner.name}"`,
       content: base64Encode(content),
       branch: GITHUB_BRANCH,
+      ...(sha && { sha }), // Include SHA if file exists
     });
   } catch (error) {
     console.error('Failed to create runner:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get the SHA of an existing file, or null if it doesn't exist
+ */
+async function getFileSha(
+  octokit: Octokit,
+  path: string
+): Promise<string | null> {
+  try {
+    const { data } = await octokit.rest.repos.getContent({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      path,
+      ref: GITHUB_BRANCH,
+    });
+
+    if ('sha' in data) {
+      return data.sha;
+    }
+    return null;
+  } catch (error: any) {
+    // File doesn't exist (404)
+    if (error.status === 404) {
+      return null;
+    }
     throw error;
   }
 }
@@ -138,6 +170,9 @@ export async function uploadImage(
   }
   const content = btoa(binary);
 
+  // Check if file exists and get its SHA
+  const sha = await getFileSha(octokit, path);
+
   await octokit.rest.repos.createOrUpdateFileContents({
     owner: GITHUB_OWNER,
     repo: GITHUB_REPO,
@@ -145,6 +180,7 @@ export async function uploadImage(
     message: commitMessage,
     content: content,
     branch: GITHUB_BRANCH,
+    ...(sha && { sha }), // Include SHA if file exists
   });
 
   return `/${path.replace(/^assets\//, '')}`;
@@ -216,6 +252,9 @@ export async function createRunResult(
     const stagingPath = `content/staging/runs/${dateStr}.json`;
     const content = JSON.stringify(stagingData, null, 2);
 
+    // Check if file exists and get its SHA
+    const sha = await getFileSha(octokit, stagingPath);
+
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: GITHUB_OWNER,
       repo: GITHUB_REPO,
@@ -223,6 +262,7 @@ export async function createRunResult(
       message: `feat(runs): add run data for ${dateStr}`,
       content: base64Encode(content),
       branch: GITHUB_BRANCH,
+      ...(sha && { sha }), // Include SHA if file exists
     });
 
   } catch (error) {
