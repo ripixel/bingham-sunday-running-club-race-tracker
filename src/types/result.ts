@@ -9,7 +9,16 @@ export interface LoopConfig {
 }
 
 /**
- * Loop distances for the running club
+ * Loop distances for the running club (simple accessor)
+ */
+export const LOOP_DISTANCES = {
+  small: 0.8,
+  medium: 1.0,
+  long: 1.2,
+} as const;
+
+/**
+ * Loop configurations with full metadata
  */
 export const LOOP_CONFIGS: Record<'small' | 'medium' | 'long', LoopConfig> = {
   small: {
@@ -33,7 +42,7 @@ export const LOOP_CONFIGS: Record<'small' | 'medium' | 'long', LoopConfig> = {
 };
 
 /**
- * Participant data for a single run
+ * Participant data for a single run (persisted to GitHub)
  */
 export interface Participant {
   runner: string; // Runner ID (slug) or "guest"
@@ -61,14 +70,18 @@ export interface RunResult {
 }
 
 /**
- * Live tracking state for a participant during a run
+ * Live tracking state for a participant during a run (runtime only)
  */
-export interface LiveParticipant extends Participant {
-  runnerId: string; // Same as runner field
+export interface LiveParticipant {
+  runnerId: string; // Runner ID or "guest"
   runnerName: string; // Display name
   runnerPhoto?: string; // Photo URL
   nickname?: string; // Runtime nickname for guests
+  smallLoops: number;
+  mediumLoops: number;
+  longLoops: number;
   startTime: number; // Timestamp in ms
-  endTime?: number; // Timestamp in ms when finished
+  finishTime?: number; // Elapsed time in ms when finished
   finished: boolean;
 }
+

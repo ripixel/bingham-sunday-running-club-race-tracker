@@ -1,18 +1,26 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
-import { useGitHub } from './hooks/useGitHub';
+import { createGitHubClient } from './lib/github';
 import { LoginPage } from './pages/LoginPage';
-import { DashboardPage } from './pages/DashboardPage';
+import { RunnersPage } from './pages/RunnersPage';
+import { TrackerPage } from './pages/TrackerPage';
+import { Button } from './components/ui/Button';
+import type { Octokit } from 'octokit';
+
+type Page = 'runners' | 'tracker';
 
 function App() {
   const { token, isAuthenticated, isLoading: isAuthLoading, signIn, signOut } = useAuth();
-  const { loadRunners } = useGitHub(token);
+  const [octokit, setOctokit] = useState<Octokit | null>(null);
+  const [currentPage, setCurrentPage] = useState<Page>('runners');
 
   useEffect(() => {
-    if (isAuthenticated) {
-      loadRunners();
+    if (token) {
+      setOctokit(createGitHubClient(token));
+    } else {
+      setOctokit(null);
     }
-  }, [isAuthenticated, loadRunners]);
+  }, [token]);
 
   if (isAuthLoading) {
     return (
@@ -25,29 +33,74 @@ function App() {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !octokit) {
     return <LoginPage onSignIn={signIn} isLoading={isAuthLoading} />;
   }
 
   return (
-    <DashboardPage onSignOut={signOut}>
-      <div className="text-center py-12">
-        <h2 className="text-2xl font-bold mb-4">Welcome to Race Director Dashboard!</h2>
-        <p className="text-gray-400 mb-8">
-          Use the navigation above to manage runners or start tracking a live run.
-        </p>
-        <div className="max-w-2xl mx-auto text-left text-gray-300 space-y-4">
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h3 className="text-lg font-semibold text-orange mb-2">📋 Manage Runners</h3>
-            <p>View all registered runners and add new members to the club.</p>
-          </div>
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h3 className="text-lg font-semibold text-green mb-2">🏃 Live Run Tracker</h3>
-            <p>Track loops, times, and distances during Sunday runs in real-time.</p>
+    <div className="min-h-screen flex flex-col">
+      {/* Header */}
+      <header className="bg-gray-800 border-b-4 border-orange shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-bold">
+                <span className="text-orange">Race Director</span>
+              </h1>
+              <div className="flex h-8 gap-1">
+                <div className="w-1 bg-orange"></div>
+                <div className="w-1 bg-pink"></div>
+                <div className="w-1 bg-green"></div>
+                <div className="w-1 bg-blue"></div>
+              </div>
+            </div>
+            <Button onClick={signOut} variant="secondary" size="sm">
+              Sign Out
+            </Button>
           </div>
         </div>
-      </div>
-    </DashboardPage>
+      </header>
+
+      {/* Navigation */}
+      <nav className="bg-gray-800 border-b border-gray-700">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex gap-4">
+            <button
+              onClick={() => setCurrentPage('runners')}
+              className={`
+                px-4 py-3 font-semibold transition-colors
+                ${currentPage === 'runners'
+                  ? 'text-orange border-b-2 border-orange'
+                  : 'text-gray-400 hover:text-gray-200'
+                }
+              `}
+            >
+              Manage Runners
+            </button>
+            <button
+              onClick={() => setCurrentPage('tracker')}
+              className={`
+                px-4 py-3 font-semibold transition-colors
+                ${currentPage === 'tracker'
+                  ? 'text-green border-b-2 border-green'
+                  : 'text-gray-400 hover:text-gray-200'
+                }
+              `}
+            >
+              Live Run Tracker
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="flex-1 bg-gray-900">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          {currentPage === 'runners' && <RunnersPage octokit={octokit} />}
+          {currentPage === 'tracker' && <TrackerPage octokit={octokit} />}
+        </div>
+      </main>
+    </div>
   );
 }
 
