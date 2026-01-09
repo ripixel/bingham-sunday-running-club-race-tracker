@@ -74,23 +74,23 @@ export function LapCounter({
         ${containerClasses[currentStatus]}
       `}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-2">
-        <div className="min-w-0 pr-2">
-          <h3 className="font-bold text-base truncate leading-tight">{runnerName}</h3>
-          {(currentStatus === 'running' || currentStatus === 'finished') && (
-            <p className="text-xs text-gray-400 truncate">{runnerId}</p>
-          )}
-        </div>
-        <div className="text-right flex-shrink-0">
-          <div className="text-lg font-mono font-bold leading-tight">
-            {distance.toFixed(1)} <span className="text-sm font-normal text-gray-400">km</span>
-          </div>
-          <div className={`text-xs font-mono ${currentStatus === 'running' ? 'text-gray-400' : 'text-white font-bold'}`}>
-            {formatTime(elapsedTime)}
-          </div>
+      {/* Header - Compact single row */}
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="font-bold text-sm truncate flex-1 mr-2">{runnerName}</h3>
+        <div className="text-right text-xs">
+          <span className="font-mono font-bold">{distance.toFixed(1)}km</span>
+          <span className="text-gray-400 ml-1">{formatTime(elapsedTime)}</span>
         </div>
       </div>
+
+      {/* Inline loop counts for running state */}
+      {currentStatus === 'running' && (
+        <div className="flex justify-center gap-3 text-xs text-gray-400 mb-1">
+          <span className="text-pink">S:{smallLoops}</span>
+          <span className="text-green">M:{mediumLoops}</span>
+          <span className="text-blue">L:{longLoops}</span>
+        </div>
+      )}
 
       {/* Loop Counters - Only visible for Finished (Timer Stopped) state */}
       {currentStatus === 'finished' && (
@@ -102,14 +102,14 @@ export function LapCounter({
               <button
                 onClick={() => onUpdateLoops(runnerId, 'small', -1)}
                 disabled={smallLoops === 0}
-                className="w-6 h-6 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-sm"
+                className="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-base font-bold no-select"
               >
                 −
               </button>
-              <span className="font-mono font-bold w-5 text-center text-sm">{smallLoops}</span>
+              <span className="font-mono font-bold w-6 text-center text-sm">{smallLoops}</span>
               <button
                 onClick={() => onUpdateLoops(runnerId, 'small', 1)}
-                className="w-6 h-6 flex items-center justify-center rounded bg-pink hover:bg-pink/90 text-white text-sm shadow-sm"
+                className="w-8 h-8 flex items-center justify-center rounded bg-pink hover:bg-pink/90 text-white text-base font-bold shadow-sm no-select"
               >
                 +
               </button>
@@ -123,14 +123,14 @@ export function LapCounter({
               <button
                 onClick={() => onUpdateLoops(runnerId, 'medium', -1)}
                 disabled={mediumLoops === 0}
-                className="w-6 h-6 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-sm"
+                className="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-base font-bold no-select"
               >
                 −
               </button>
-              <span className="font-mono font-bold w-5 text-center text-sm">{mediumLoops}</span>
+              <span className="font-mono font-bold w-6 text-center text-sm">{mediumLoops}</span>
               <button
                 onClick={() => onUpdateLoops(runnerId, 'medium', 1)}
-                className="w-6 h-6 flex items-center justify-center rounded bg-green hover:bg-green/90 text-white text-sm shadow-sm"
+                className="w-8 h-8 flex items-center justify-center rounded bg-green hover:bg-green/90 text-white text-base font-bold shadow-sm no-select"
               >
                 +
               </button>
@@ -144,14 +144,14 @@ export function LapCounter({
               <button
                 onClick={() => onUpdateLoops(runnerId, 'long', -1)}
                 disabled={longLoops === 0}
-                className="w-6 h-6 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-sm"
+                className="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-base font-bold no-select"
               >
                 −
               </button>
-              <span className="font-mono font-bold w-5 text-center text-sm">{longLoops}</span>
+              <span className="font-mono font-bold w-6 text-center text-sm">{longLoops}</span>
               <button
                 onClick={() => onUpdateLoops(runnerId, 'long', 1)}
-                className="w-6 h-6 flex items-center justify-center rounded bg-blue hover:bg-blue/90 text-white text-sm shadow-sm"
+                className="w-8 h-8 flex items-center justify-center rounded bg-blue hover:bg-blue/90 text-white text-base font-bold shadow-sm no-select"
               >
                 +
               </button>
@@ -160,12 +160,12 @@ export function LapCounter({
         </div>
       )}
 
-      {/* Read-only loop summary for Running/Completed */}
-      {currentStatus !== 'finished' && (
-        <div className="flex justify-between text-xs text-gray-400 mb-2 px-2">
-           <span>S: {smallLoops}</span>
-           <span>M: {mediumLoops}</span>
-           <span>L: {longLoops}</span>
+      {/* Read-only loop summary for Completed */}
+      {currentStatus === 'completed' && (
+        <div className="flex justify-center gap-3 text-xs text-gray-400 mb-1">
+          <span>S:{smallLoops}</span>
+          <span>M:{mediumLoops}</span>
+          <span>L:{longLoops}</span>
         </div>
       )}
 

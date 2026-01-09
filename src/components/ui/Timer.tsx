@@ -32,12 +32,9 @@ export function Timer({
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 mb-6 border-4 border-orange flex items-center justify-between">
-      <div className="text-center flex-1">
-        <div className="text-5xl font-bold font-mono text-orange">
-          {formatTime(elapsedTime)}
-        </div>
-        <p className="text-gray-400 text-sm mt-1">Global Timer</p>
+    <div className="bg-gray-800 rounded-lg p-3 mb-4 border-2 border-orange flex items-center justify-between">
+      <div className="text-3xl font-bold font-mono text-orange">
+        {formatTime(elapsedTime)}
       </div>
 
       <div className="flex gap-2">

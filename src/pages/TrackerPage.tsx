@@ -25,6 +25,11 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
   const [startTime, setStartTime] = useState<number>(0);
   const [elapsedTime, setElapsedTime] = useState(0);
 
+  // Late runner state
+  const [showAddLateRunner, setShowAddLateRunner] = useState(false);
+  const [lateRunnerName, setLateRunnerName] = useState('');
+  const [selectedLateRunner, setSelectedLateRunner] = useState<string>('');
+
   // Load runners on mount
   useEffect(() => {
     const load = async () => {
@@ -167,6 +172,48 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
     );
   }, []);
 
+  // Add a late runner (they start NOW, not at race start time)
+  const handleAddLateRunner = useCallback(() => {
+    const now = Date.now();
+
+    if (selectedLateRunner) {
+      // Adding an existing registered runner
+      const runner = runners.find((r) => r.id === selectedLateRunner);
+      if (runner && !participants.some((p) => p.runnerId === runner.id)) {
+        const newParticipant: LiveParticipant = {
+          runnerId: runner.id,
+          repoId: runner.id,
+          runnerName: runner.name,
+          smallLoops: 0,
+          mediumLoops: 0,
+          longLoops: 0,
+          startTime: now,
+          status: 'running',
+        };
+        setParticipants((prev) => [...prev, newParticipant]);
+      }
+    } else if (lateRunnerName.trim()) {
+      // Adding a guest with a name
+      const guestId = `guest-${now}-${Math.random().toString(36).substring(2, 7)}`;
+      const newParticipant: LiveParticipant = {
+        runnerId: guestId,
+        repoId: 'guest',
+        runnerName: lateRunnerName.trim(),
+        smallLoops: 0,
+        mediumLoops: 0,
+        longLoops: 0,
+        startTime: now,
+        status: 'running',
+      };
+      setParticipants((prev) => [...prev, newParticipant]);
+    }
+
+    // Reset modal state
+    setShowAddLateRunner(false);
+    setLateRunnerName('');
+    setSelectedLateRunner('');
+  }, [runners, participants, selectedLateRunner, lateRunnerName]);
+
   // End run and go to review
   const handleEndRun = () => {
     setIsRunning(false);
@@ -254,6 +301,92 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
           onUndoComplete={handleUndoComplete}
           onResume={handleResume}
         />
+
+        {/* Add Late Runner Button */}
+        <div className="mt-6 text-center">
+          <Button
+            onClick={() => setShowAddLateRunner(true)}
+            variant="secondary"
+            size="sm"
+          >
+            ➕ Add Late Runner
+          </Button>
+        </div>
+
+        {/* Late Runner Modal */}
+        {showAddLateRunner && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-600 shadow-2xl">
+              <h3 className="text-xl font-bold mb-4 text-orange">Add Late Runner</h3>
+
+              {/* Select existing runner */}
+              <div className="mb-4">
+                <label className="block text-sm font-semibold mb-2 text-gray-300">
+                  Select Registered Runner
+                </label>
+                <select
+                  value={selectedLateRunner}
+                  onChange={(e) => {
+                    setSelectedLateRunner(e.target.value);
+                    if (e.target.value) setLateRunnerName('');
+                  }}
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white text-base"
+                >
+                  <option value="">-- Select --</option>
+                  {runners
+                    .filter((r) => !participants.some((p) => p.runnerId === r.id))
+                    .map((runner) => (
+                      <option key={runner.id} value={runner.id}>
+                        {runner.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="text-center text-gray-500 text-sm my-3">— OR —</div>
+
+              {/* Add guest */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold mb-2 text-gray-300">
+                  Add Guest (Name)
+                </label>
+                <input
+                  type="text"
+                  value={lateRunnerName}
+                  onChange={(e) => {
+                    setLateRunnerName(e.target.value);
+                    if (e.target.value) setSelectedLateRunner('');
+                  }}
+                  placeholder="e.g. Sarah"
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white text-base placeholder:text-gray-500"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => {
+                    setShowAddLateRunner(false);
+                    setLateRunnerName('');
+                    setSelectedLateRunner('');
+                  }}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleAddLateRunner}
+                  variant="success"
+                  disabled={!selectedLateRunner && !lateRunnerName.trim()}
+                  className="flex-1"
+                >
+                  Add Runner
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
