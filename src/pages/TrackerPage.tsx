@@ -4,7 +4,7 @@ import { Button } from '../components/ui/Button';
 import { Timer } from '../components/ui/Timer';
 import { RunnerSelector } from '../components/tracker/RunnerSelector';
 import { TrackerGrid } from '../components/tracker/TrackerGrid';
-import { fetchRunners, createRunResult } from '../lib/github';
+import { fetchRunners, createRunResult, fetchLatestRunTimes } from '../lib/github';
 import type { Runner, TrackedRunner } from '../types/runner';
 import type { LiveParticipant } from '../types/result';
 
@@ -19,6 +19,7 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
   const [runners, setRunners] = useState<Runner[]>([]);
   const [isLoadingRunners, setIsLoadingRunners] = useState(true);
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
+  const [seedTimes, setSeedTimes] = useState<Record<string, number>>({});
 
   // Timer state
   const [isRunning, setIsRunning] = useState(false);
@@ -29,6 +30,9 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
   const [showAddLateRunner, setShowAddLateRunner] = useState(false);
   const [lateRunnerName, setLateRunnerName] = useState('');
   const [selectedLateRunner, setSelectedLateRunner] = useState<string>('');
+
+  // Race photo state
+  const [racePhoto, setRacePhoto] = useState<File | null>(null);
 
   // Load runners on mount
   useEffect(() => {
@@ -43,7 +47,18 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
         setIsLoadingRunners(false);
       }
     };
+
+    const loadSeedTimes = async () => {
+       try {
+         const times = await fetchLatestRunTimes(octokit);
+         setSeedTimes(times);
+       } catch (e) {
+         // ignore
+       }
+    };
+
     load();
+    loadSeedTimes();
   }, [octokit]);
 
   // Timer effect
@@ -78,7 +93,25 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
     setState('running');
 
     // Create live participants from selected runners
-    const liveParticipants: LiveParticipant[] = selectedRunners.map((runner) => ({
+    // Sort by seed times (quickest first), with unseeded runners at the end alphabetically
+    const sortedRunners = [...selectedRunners].sort((a, b) => {
+      const timeA = seedTimes[a.id];
+      const timeB = seedTimes[b.id];
+
+      // If both have times, sort ascending (faster first)
+      if (timeA !== undefined && timeB !== undefined) return timeA - timeB;
+
+      // If only A has time, A comes first
+      if (timeA !== undefined) return -1;
+
+      // If only B has time, B comes first
+      if (timeB !== undefined) return 1;
+
+      // Neither has time, sort alphabetical
+      return (a.nickname || a.name).localeCompare(b.nickname || b.name);
+    });
+
+    const liveParticipants: LiveParticipant[] = sortedRunners.map((runner) => ({
       runnerId: runner.id, // ID is now guaranteed unique (regular ID or guest-timestamp)
       // For guests, we write "guest" to the repo later, but keep unique ID for tracking state
       repoId: runner.id.startsWith('guest-') ? 'guest' : runner.id,
@@ -225,13 +258,14 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
     try {
       const now = new Date();
 
+      if (!racePhoto) {
+        alert('Please take/upload a race photo first!');
+        return;
+      }
+
       await createRunResult(octokit, {
         date: now,
-        title: 'Sunday Run',
-        eventTitle: '☕ Sunday Run & Breakfast',
-        location: 'Bingham Market Place',
-        mainPhoto: '/images/placeholder.jpg',
-        isSpecialEvent: false,
+        photoBlob: racePhoto,
         participants: participants.map((p) => ({
           runnerId: p.repoId || (p.runnerId.startsWith('guest-') ? 'guest' : p.runnerId),
           smallLoops: p.smallLoops,
@@ -248,6 +282,7 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
       setState('setup');
       setParticipants([]);
       setElapsedTime(0);
+      setRacePhoto(null);
     } catch (error) {
       console.error('Failed to save results:', error);
       alert('Failed to save results. Please try again.');
@@ -409,6 +444,41 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
               </div>
             ))}
           </div>
+          </div>
+
+
+        {/* Photo Upload */}
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
+          <h3 className="font-semibold mb-4">Race Photo 📸</h3>
+          <p className="text-gray-400 text-sm mb-4">
+             Take a photo of the group or the finishing moment. This is required for the website.
+          </p>
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment" // Prefer rear camera on mobile
+            onChange={(e) => {
+              if (e.target.files && e.target.files[0]) {
+                setRacePhoto(e.target.files[0]);
+              }
+            }}
+            className="block w-full text-sm text-gray-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-full file:border-0
+              file:text-sm file:font-semibold
+              file:bg-orange file:text-white
+              hover:file:bg-orange/90"
+          />
+          {racePhoto && (
+            <div className="mt-4">
+               <p className="text-green text-sm mb-2">✅ Photo Selected: {racePhoto.name}</p>
+               <img
+                 src={URL.createObjectURL(racePhoto)}
+                 alt="Preview"
+                 className="w-full h-48 object-cover rounded-lg border border-gray-600"
+               />
+            </div>
+          )}
         </div>
 
         <div className="flex gap-4">

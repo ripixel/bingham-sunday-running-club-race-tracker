@@ -86,9 +86,23 @@ export async function fetchRunners(octokit: Octokit): Promise<Runner[]> {
  */
 export async function createRunner(
   octokit: Octokit,
-  runner: Runner
+  runner: Runner,
+  photoBlob?: Blob | null
 ): Promise<void> {
   try {
+    // 1. Upload Photo if present
+    if (photoBlob) {
+      const photoPath = `assets/images/runners/${runner.id}.jpg`;
+      const photoUrl = await uploadImage(
+        octokit,
+        photoBlob,
+        photoPath,
+        `feat(images): add photo for runner ${runner.name}`
+      );
+      runner.photo = photoUrl;
+    }
+
+    // 2. Commit Runner JSON
     const content = JSON.stringify(runner, null, 2);
     const path = `content/runners/${runner.id}.json`;
 
@@ -106,38 +120,59 @@ export async function createRunner(
   }
 }
 
-// /**
-//  * Format time in MM:SS format
-//  */
-// function formatTime(milliseconds: number): string {
-//   const totalSeconds = Math.floor(milliseconds / 1000);
-//   const minutes = Math.floor(totalSeconds / 60);
-//   const seconds = totalSeconds % 60;
-//   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-// }
+/**
+ * Upload an image to the repository
+ */
+export async function uploadImage(
+  octokit: Octokit,
+  imageBlob: Blob,
+  path: string,
+  commitMessage: string
+): Promise<string> {
+  const arrayBuffer = await imageBlob.arrayBuffer();
+  // Encode as base64
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const content = btoa(binary);
 
-// /**
-//  * Calculate total distance from loop counts
-//  */
-// function calculateDistance(smallLoops: number, mediumLoops: number, longLoops: number): number {
-//   return smallLoops * 0.8 + mediumLoops * 1.0 + longLoops * 1.2;
-// }
+  await octokit.rest.repos.createOrUpdateFileContents({
+    owner: GITHUB_OWNER,
+    repo: GITHUB_REPO,
+    path,
+    message: commitMessage,
+    content: content,
+    branch: GITHUB_BRANCH,
+  });
+
+  return `/${path.replace(/^assets\//, '')}`;
+}
 
 /**
- * Create a run result file in the repository
- * COMMENTED OUT WHILE DEVELOPING FUNCTIONALITY
+ * Format time in MM:SS format or HH:MM:SS if needed
+ */
+function formatTime(milliseconds: number): string {
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Create a run result file in the repository (Staging Flow)
  */
 export async function createRunResult(
-  _octokit: Octokit,
-  _result: {
+  octokit: Octokit,
+  data: {
     date: Date;
-    title: string;
-    eventTitle: string;
-    eventDescription?: string;
-    location: string;
-    mainPhoto: string;
-    weather?: string;
-    isSpecialEvent: boolean;
+    photoBlob: Blob;
     participants: Array<{
       runnerId: string;
       smallLoops: number;
@@ -146,77 +181,122 @@ export async function createRunResult(
       startTime: number;
       endTime: number;
     }>;
-    body?: string;
   }
 ): Promise<void> {
-  // try {
-  //   // Format date for filename and frontmatter
-  //   const dateStr = result.date.toISOString().split('T')[0]; // YYYY-MM-DD
-  //   const isoDateTime = result.date.toISOString();
+  try {
+    const dateStr = data.date.toISOString().split('T')[0]; // YYYY-MM-DD
 
-  //   // Build participants array
-  //   const participants: Participant[] = result.participants.map((p) => ({
-  //     runner: p.runnerId,
-  //     distance: parseFloat(calculateDistance(p.smallLoops, p.mediumLoops, p.longLoops).toFixed(1)),
-  //     smallLoops: p.smallLoops,
-  //     mediumLoops: p.mediumLoops,
-  //     longLoops: p.longLoops,
-  //     time: formatTime(p.endTime - p.startTime),
-  //   }));
+    // 1. Upload Race Photo
+    const photoPath = `assets/images/races/${dateStr}.jpg`;
+    const photoUrl = await uploadImage(
+      octokit,
+      data.photoBlob,
+      photoPath,
+      `feat(images): add race photo for ${dateStr}`
+    );
 
-  //   // Build YAML frontmatter
-  //   const frontmatter = {
-  //     date: isoDateTime,
-  //     title: result.title,
-  //     eventTitle: result.eventTitle,
-  //     eventDescription: result.eventDescription,
-  //     location: result.location,
-  //     mainPhoto: result.mainPhoto,
-  //     weather: result.weather,
-  //     isSpecialEvent: result.isSpecialEvent,
-  //     participants,
-  //   };
+    // 2. Prepare Staging Data
+    const stagingData = {
+      date: data.date.toISOString(),
+      mainPhoto: photoUrl,
+      participants: data.participants.map((p) => ({
+        runner: p.runnerId.startsWith('guest-') ? 'guest' : p.runnerId,
+        smallLoops: p.smallLoops,
+        mediumLoops: p.mediumLoops,
+        longLoops: p.longLoops,
+        time: formatTime(p.endTime - p.startTime),
+      })),
+    };
 
-  //   // Convert to YAML string (simple approach)
-  //   const yamlLines = ['---'];
-  //   yamlLines.push(`date: ${frontmatter.date}`);
-  //   yamlLines.push(`title: "${frontmatter.title}"`);
-  //   yamlLines.push(`eventTitle: "${frontmatter.eventTitle}"`);
-  //   if (frontmatter.eventDescription) {
-  //     yamlLines.push(`eventDescription: "${frontmatter.eventDescription}"`);
-  //   }
-  //   yamlLines.push(`location: "${frontmatter.location}"`);
-  //   yamlLines.push(`mainPhoto: "${frontmatter.mainPhoto}"`);
-  //   if (frontmatter.weather) {
-  //     yamlLines.push(`weather: "${frontmatter.weather}"`);
-  //   }
-  //   yamlLines.push(`isSpecialEvent: ${frontmatter.isSpecialEvent}`);
-  //   yamlLines.push('participants:');
+    // 3. Commit Staging JSON
+    const stagingPath = `content/staging/runs/${dateStr}.json`;
+    const content = JSON.stringify(stagingData, null, 2);
 
-  //   participants.forEach((p) => {
-  //     yamlLines.push(`  - runner: "${p.runner}"`);
-  //     yamlLines.push(`    distance: ${p.distance}`);
-  //     yamlLines.push(`    smallLoops: ${p.smallLoops}`);
-  //     yamlLines.push(`    mediumLoops: ${p.mediumLoops}`);
-  //     yamlLines.push(`    longLoops: ${p.longLoops}`);
-  //     yamlLines.push(`    time: "${p.time}"`);
-  //   });
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      path: stagingPath,
+      message: `feat(runs): add run data for ${dateStr}`,
+      content: base64Encode(content),
+      branch: GITHUB_BRANCH,
+    });
 
-  //   yamlLines.push('---');
+  } catch (error) {
+    console.error('Failed to create run result:', error);
+    throw error;
+  }
+}
 
-  //   const content = yamlLines.join('\n') + '\n' + (result.body || '');
-  //   const path = `content/results/${dateStr}.md`;
+/**
+ * Fetch the latest run times for sorting (Seed Order)
+ */
+export async function fetchLatestRunTimes(octokit: Octokit): Promise<Record<string, number>> {
+  try {
+    // 1. List result files
+    const { data } = await octokit.rest.repos.getContent({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      path: 'content/results',
+      ref: GITHUB_BRANCH,
+    });
 
-  //   await octokit.rest.repos.createOrUpdateFileContents({
-  //     owner: GITHUB_OWNER,
-  //     repo: GITHUB_REPO,
-  //     path,
-  //     message: `feat(content): Create run result "${result.title}"`,
-  //     content: base64Encode(content),
-  //     branch: GITHUB_BRANCH,
-  //   });
-  // } catch (error) {
-  //   console.error('Failed to create run result:', error);
-  //   throw error;
-  // }
+    if (!Array.isArray(data)) return {};
+
+    // 2. Find latest file (sort by name desc)
+    const resultFiles = data
+      .filter(f => f.name.endsWith('.md'))
+      .sort((a, b) => b.name.localeCompare(a.name));
+
+    if (resultFiles.length === 0) return {};
+
+    const latestFile = resultFiles[0];
+
+    // 3. Fetch content
+    const { data: fileData } = await octokit.rest.repos.getContent({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      path: latestFile.path,
+      ref: GITHUB_BRANCH,
+    });
+
+    if (!('content' in fileData)) return {};
+
+    const content = base64Decode(fileData.content);
+
+    // 4. Parse simple frontmatter (regex) to extract times
+    const times: Record<string, number> = {};
+
+    // Split by indentation to group participants
+    const parts = content.split('participants:');
+    if (parts.length < 2) return {};
+
+    const participantsBlock = parts[1].split('---')[0]; // simple split
+
+    // Match runner and time blocks
+    const lines = participantsBlock.split('\n');
+    let currentRunner: string | null = null;
+
+    for (const line of lines) {
+      const runnerMatch = line.match(/^\s+-\s+runner:\s+["']?([^"']+)["']?/);
+      if (runnerMatch) {
+        currentRunner = runnerMatch[1];
+        continue;
+      }
+
+      const timeMatch = line.match(/^\s+time:\s+["']?(\d+):(\d+)["']?/);
+      if (currentRunner && timeMatch) {
+        const mins = parseInt(timeMatch[1], 10);
+        const secs = parseInt(timeMatch[2], 10);
+        const ms = (mins * 60 + secs) * 1000;
+        times[currentRunner] = ms;
+        currentRunner = null; // Reset
+      }
+    }
+
+    return times;
+
+  } catch (error) {
+    console.warn('Failed to fetch latest run times:', error);
+    return {};
+  }
 }

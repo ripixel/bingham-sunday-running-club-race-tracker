@@ -13,13 +13,16 @@ interface RunnersPageProps {
 export function RunnersPage({ octokit }: RunnersPageProps) {
   const [runners, setRunners] = useState<Runner[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingRunner, setEditingRunner] = useState<Runner | null>(null);
 
   const loadRunners = async () => {
     try {
       setIsLoading(true);
       const data = await fetchRunners(octokit);
-      setRunners(data);
+      // Sort alphabetically by name
+      const sortedData = data.sort((a, b) => a.name.localeCompare(b.name));
+      setRunners(sortedData);
     } catch (error) {
       console.error('Failed to load runners:', error);
     } finally {
@@ -31,10 +34,26 @@ export function RunnersPage({ octokit }: RunnersPageProps) {
     loadRunners();
   }, [octokit]);
 
-  const handleAddRunner = async (runner: Runner) => {
-    await createRunner(octokit, runner);
-    setShowAddForm(false);
+  const handleSaveRunner = async (runner: Runner, photo: File | null) => {
+    await createRunner(octokit, runner, photo);
+    setShowForm(false);
+    setEditingRunner(null);
     await loadRunners(); // Refresh the list
+  };
+
+  const handleEdit = (runner: Runner) => {
+    setEditingRunner(runner);
+    setShowForm(true);
+  };
+
+  const handleAddNew = () => {
+      setEditingRunner(null);
+      setShowForm(true);
+  };
+
+  const handleCancel = () => {
+      setShowForm(false);
+      setEditingRunner(null);
   };
 
   return (
@@ -46,23 +65,24 @@ export function RunnersPage({ octokit }: RunnersPageProps) {
             {runners.length} runner{runners.length !== 1 ? 's' : ''} registered
           </p>
         </div>
-        {!showAddForm && (
-          <Button onClick={() => setShowAddForm(true)} variant="success">
+        {!showForm && (
+          <Button onClick={handleAddNew} variant="success">
             + Add Runner
           </Button>
         )}
       </div>
 
-      {showAddForm && (
+      {showForm && (
         <div className="mb-6">
           <AddRunnerForm
-            onSubmit={handleAddRunner}
-            onCancel={() => setShowAddForm(false)}
+            onSubmit={handleSaveRunner}
+            onCancel={handleCancel}
+            initialData={editingRunner}
           />
         </div>
       )}
 
-      <RunnerList runners={runners} isLoading={isLoading} />
+      <RunnerList runners={runners} isLoading={isLoading} onEdit={handleEdit} />
     </div>
   );
 }

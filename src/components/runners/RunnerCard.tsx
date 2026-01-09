@@ -2,9 +2,10 @@ import type { Runner } from '../../types/runner';
 
 interface RunnerCardProps {
   runner: Runner;
+  onEdit?: (runner: Runner) => void;
 }
 
-export function RunnerCard({ runner }: RunnerCardProps) {
+export function RunnerCard({ runner, onEdit }: RunnerCardProps) {
   return (
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 flex items-center gap-4">
       {/* Avatar */}
@@ -26,7 +27,10 @@ export function RunnerCard({ runner }: RunnerCardProps) {
       <div className="flex-1 min-w-0">
         <h3 className="font-semibold text-lg truncate">
           {runner.anonymous ? (
-            <span className="text-gray-400">Anonymous Runner</span>
+            <span className="text-gray-400 flex items-center gap-2">
+              Anonymous Runner
+              <span className="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-300 font-normal">Hidden</span>
+            </span>
           ) : (
             runner.name
           )}
@@ -36,17 +40,16 @@ export function RunnerCard({ runner }: RunnerCardProps) {
         </p>
       </div>
 
-      {/* Badges */}
-      <div className="flex gap-2 flex-shrink-0">
-        {runner.anonymous && (
-          <span className="px-2 py-1 text-xs bg-gray-700 rounded text-gray-300">
-            Anonymous
-          </span>
-        )}
-        {runner.id === 'guest' && (
-          <span className="px-2 py-1 text-xs bg-orange/20 text-orange rounded">
-            Guest
-          </span>
+      {/* Actions */}
+      <div className="flex items-center gap-3">
+        {onEdit && (
+          <button
+            onClick={() => onEdit(runner)}
+            className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
+            title="Edit Runner"
+          >
+            ✏️
+          </button>
         )}
       </div>
     </div>

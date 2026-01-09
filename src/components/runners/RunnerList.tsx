@@ -4,9 +4,10 @@ import { RunnerCard } from './RunnerCard';
 interface RunnerListProps {
   runners: Runner[];
   isLoading: boolean;
+  onEdit?: (runner: Runner) => void;
 }
 
-export function RunnerList({ runners, isLoading }: RunnerListProps) {
+export function RunnerList({ runners, isLoading, onEdit }: RunnerListProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -28,7 +29,7 @@ export function RunnerList({ runners, isLoading }: RunnerListProps) {
   return (
     <div className="space-y-3">
       {runners.map((runner) => (
-        <RunnerCard key={runner.id} runner={runner} />
+        <RunnerCard key={runner.id} runner={runner} onEdit={onEdit} />
       ))}
     </div>
   );

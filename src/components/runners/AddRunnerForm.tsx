@@ -3,13 +3,15 @@ import { Button } from '../ui/Button';
 import type { Runner } from '../../types/runner';
 
 interface AddRunnerFormProps {
-  onSubmit: (runner: Runner) => Promise<void>;
+  onSubmit: (runner: Runner, photo: File | null) => Promise<void>;
   onCancel: () => void;
+  initialData?: Runner | null;
 }
 
-export function AddRunnerForm({ onSubmit, onCancel }: AddRunnerFormProps) {
-  const [name, setName] = useState('');
-  const [isAnonymous, setIsAnonymous] = useState(false);
+export function AddRunnerForm({ onSubmit, onCancel, initialData }: AddRunnerFormProps) {
+  const [name, setName] = useState(initialData?.name || '');
+  const [isAnonymous, setIsAnonymous] = useState(initialData?.anonymous || false);
+  const [photo, setPhoto] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +31,9 @@ export function AddRunnerForm({ onSubmit, onCancel }: AddRunnerFormProps) {
       return;
     }
 
-    const id = generateId(name);
+    // Only generate ID for new runners; use existing ID for updates
+    const id = initialData ? initialData.id : generateId(name);
+
     if (!id) {
       setError('Invalid name - must contain letters or numbers');
       return;
@@ -39,12 +43,13 @@ export function AddRunnerForm({ onSubmit, onCancel }: AddRunnerFormProps) {
       id,
       name: name.trim(),
       anonymous: isAnonymous,
-      joinedDate: new Date().toISOString().split('T')[0],
+      joinedDate: initialData?.joinedDate || new Date().toISOString().split('T')[0],
+      photo: initialData?.photo // Keep existing photo URL if no new one
     };
 
     try {
       setIsSubmitting(true);
-      await onSubmit(runner);
+      await onSubmit(runner, photo);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create runner');
     } finally {
@@ -54,7 +59,9 @@ export function AddRunnerForm({ onSubmit, onCancel }: AddRunnerFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-      <h3 className="text-xl font-bold mb-4 text-green">Add New Runner</h3>
+      <h3 className="text-xl font-bold mb-4 text-green">
+        {initialData ? 'Edit Runner' : 'Add New Runner'}
+      </h3>
 
       {error && (
         <div className="bg-pink/20 border border-pink text-pink px-4 py-2 rounded mb-4">
@@ -78,7 +85,7 @@ export function AddRunnerForm({ onSubmit, onCancel }: AddRunnerFormProps) {
           />
           {name && (
             <p className="text-sm text-gray-400 mt-1">
-              ID will be: <code className="text-pink">{generateId(name) || '...'}</code>
+              ID: <code className="text-pink">{initialData ? initialData.id : (generateId(name) || '...')}</code> {initialData && '(cannot change)'}
             </p>
           )}
         </div>
@@ -96,11 +103,36 @@ export function AddRunnerForm({ onSubmit, onCancel }: AddRunnerFormProps) {
             Anonymous (shown as "Runner #X" in results)
           </label>
         </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">
+            Profile Photo (Optional)
+          </label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              if (e.target.files && e.target.files[0]) {
+                setPhoto(e.target.files[0]);
+              }
+            }}
+            className="block w-full text-sm text-gray-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-full file:border-0
+              file:text-sm file:font-semibold
+              file:bg-green file:text-white
+              hover:file:bg-green/90"
+            disabled={isSubmitting}
+          />
+          {photo && (
+            <p className="text-sm text-green mt-1">✅ {photo.name}</p>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-3 mt-6">
         <Button type="submit" variant="success" disabled={isSubmitting}>
-          {isSubmitting ? 'Creating...' : 'Create Runner'}
+          {isSubmitting ? 'Saving...' : (initialData ? 'Update Runner' : 'Create Runner')}
         </Button>
         <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           Cancel
