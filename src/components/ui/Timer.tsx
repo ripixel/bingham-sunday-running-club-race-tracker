@@ -11,9 +11,6 @@ interface TimerProps {
 
 export function Timer({
   elapsedTime,
-  isRunning,
-  onPause,
-  onResume,
   onEnd,
   canEnd
 }: TimerProps) {
@@ -38,15 +35,7 @@ export function Timer({
       </div>
 
       <div className="flex gap-2">
-        {isRunning ? (
-          <Button onClick={onPause} variant="secondary" size="sm">
-            Pause
-          </Button>
-        ) : (
-          <Button onClick={onResume} variant="success" size="sm">
-            Resume
-          </Button>
-        )}
+
         <Button
           onClick={onEnd}
           variant="danger"

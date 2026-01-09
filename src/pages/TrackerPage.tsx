@@ -10,11 +10,12 @@ import type { LiveParticipant } from '../types/result';
 
 interface TrackerPageProps {
   octokit: Octokit;
+  setImmersiveMode?: (value: boolean) => void;
 }
 
 type TrackerState = 'setup' | 'running' | 'review';
 
-export function TrackerPage({ octokit }: TrackerPageProps) {
+export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
   const [state, setState] = useState<TrackerState>('setup');
   const [runners, setRunners] = useState<Runner[]>([]);
   const [isLoadingRunners, setIsLoadingRunners] = useState(true);
@@ -60,6 +61,85 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
     load();
     loadSeedTimes();
   }, [octokit]);
+
+  // Restore state from localStorage
+  useEffect(() => {
+    const savedState = localStorage.getItem('current_run_state');
+    if (savedState) {
+      try {
+        const parsed = JSON.parse(savedState);
+        // Only restore if valid start time
+        if (parsed.startTime && parsed.participants && parsed.participants.length > 0) {
+           // Calculate elapsed from start time
+           const now = Date.now();
+           const restoredIsRunning = parsed.isRunning !== false; // Default to true if missing
+
+           setStartTime(parsed.startTime);
+           setParticipants(parsed.participants);
+           setIsRunning(restoredIsRunning);
+
+           if (restoredIsRunning) {
+             setState('running');
+             setElapsedTime(now - parsed.startTime);
+             setImmersiveMode?.(true);
+           } else {
+             // If was paused/review, maybe handle differently?
+             // For now assume running or review
+             if (parsed.state === 'review') {
+                setState('review');
+                setElapsedTime(parsed.finishTime || (now - parsed.startTime)); // Use stored finish time or elapsed
+             } else {
+                setState('running');
+                setElapsedTime(now - parsed.startTime);
+                setImmersiveMode?.(true);
+             }
+           }
+        }
+      } catch (e) {
+        console.error("Failed to restore state", e);
+      }
+    }
+  }, []);
+
+  // Persist state
+  useEffect(() => {
+    if (state === 'running' || state === 'review') {
+      const stateToSave = {
+        startTime,
+        participants,
+        isRunning,
+        state,
+        finishTime: state === 'review' ? elapsedTime : undefined
+      };
+      localStorage.setItem('current_run_state', JSON.stringify(stateToSave));
+    } else if (state === 'setup') {
+      // Clear storage if back to setup (manually cancelled or finished)
+      // BUT be careful not to clear on initial mount before restore.
+      // We can rely on handleEndRun to clear it.
+    }
+  }, [startTime, participants, isRunning, state, elapsedTime]);
+
+  // Wake Lock
+  useEffect(() => {
+    let wakeLock: any = null;
+
+    const requestWakeLock = async () => {
+      if (isRunning && 'wakeLock' in navigator) {
+        try {
+          // @ts-ignore
+          wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    };
+
+    requestWakeLock();
+
+    return () => {
+      if (wakeLock) wakeLock.release();
+    };
+  }, [isRunning]);
 
   // Timer effect
   useEffect(() => {
@@ -124,6 +204,9 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
     }));
 
     setParticipants(liveParticipants);
+
+    // Enable Immersive Mode
+    setImmersiveMode?.(true);
   };
 
   // Update loop counts
@@ -251,6 +334,9 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
   const handleEndRun = () => {
     setIsRunning(false);
     setState('review');
+    // Keep immersive mode or disable? Keep it for review, maybe?
+    // User probably wants to see header to navigate away if needed?
+    // Let's keep it immersive for review to prevent accidental navigation.
   };
 
   // Save results to GitHub
@@ -283,6 +369,8 @@ export function TrackerPage({ octokit }: TrackerPageProps) {
       setParticipants([]);
       setElapsedTime(0);
       setRacePhoto(null);
+      setImmersiveMode?.(false);
+      localStorage.removeItem('current_run_state');
     } catch (error) {
       console.error('Failed to save results:', error);
       alert('Failed to save results. Please try again.');
