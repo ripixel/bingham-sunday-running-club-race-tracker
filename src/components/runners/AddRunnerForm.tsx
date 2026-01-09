@@ -44,7 +44,8 @@ export function AddRunnerForm({ onSubmit, onCancel, initialData }: AddRunnerForm
       name: name.trim(),
       anonymous: isAnonymous,
       joinedDate: initialData?.joinedDate || new Date().toISOString().split('T')[0],
-      photo: initialData?.photo // Keep existing photo URL if no new one
+      photo: initialData?.photo, // Keep existing photo URL if no new one
+      ...(initialData?.startingValues && { startingValues: initialData.startingValues }) // Preserve starting values
     };
 
     try {

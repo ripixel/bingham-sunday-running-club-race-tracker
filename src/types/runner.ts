@@ -7,6 +7,11 @@ export interface Runner {
   anonymous: boolean;
   photo?: string;
   joinedDate?: string; // ISO date string
+  startingValues?: {
+    eventsAttended?: number;
+    totalKm?: number;
+    avgPace?: string; // Format: "MM:SS"
+  };
 }
 
 /**
