@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Octokit } from 'octokit';
 import { Button } from '../components/ui/Button';
 import { Timer } from '../components/ui/Timer';
@@ -31,6 +31,12 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
   const [showAddLateRunner, setShowAddLateRunner] = useState(false);
   const [lateRunnerName, setLateRunnerName] = useState('');
   const [selectedLateRunner, setSelectedLateRunner] = useState<string>('');
+
+  // Cancel race state
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  // Ref to track if we've restored from localStorage (to force timer effect to kick in)
+  const hasRestoredRef = useRef(false);
 
   // Race photo state
   const [racePhoto, setRacePhoto] = useState<File | null>(null);
@@ -74,28 +80,45 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
         const parsed = JSON.parse(savedState);
         // Only restore if valid start time
         if (parsed.startTime && parsed.participants && parsed.participants.length > 0) {
-           // Calculate elapsed from start time
            const now = Date.now();
            const restoredIsRunning = parsed.isRunning !== false; // Default to true if missing
 
-           setStartTime(parsed.startTime);
            setParticipants(parsed.participants);
-           setIsRunning(restoredIsRunning);
 
            if (restoredIsRunning) {
+             // Calculate how much time has passed since we last saved
+             // If we have savedAt, use that to calculate additional elapsed time
+             const savedAt = parsed.savedAt || parsed.startTime;
+             const savedElapsed = parsed.elapsedTime || 0;
+             const additionalElapsed = now - savedAt;
+             const totalElapsed = savedElapsed + additionalElapsed;
+
+             // Set startTime to now minus total elapsed so timer math works
+             setStartTime(now - totalElapsed);
+             setElapsedTime(totalElapsed);
              setState('running');
-             setElapsedTime(now - parsed.startTime);
              setImmersiveMode?.(true);
+             hasRestoredRef.current = true;
+             setIsRunning(true);
            } else {
-             // If was paused/review, maybe handle differently?
-             // For now assume running or review
+             // If was paused/review
              if (parsed.state === 'review') {
                 setState('review');
-                setElapsedTime(parsed.finishTime || (now - parsed.startTime)); // Use stored finish time or elapsed
+                setStartTime(parsed.startTime);
+                setElapsedTime(parsed.finishTime || parsed.elapsedTime || 0);
              } else {
+                // Paused but not in review - rare case
+                const savedAt = parsed.savedAt || parsed.startTime;
+                const savedElapsed = parsed.elapsedTime || 0;
+                const additionalElapsed = now - savedAt;
+                const totalElapsed = savedElapsed + additionalElapsed;
+
+                setStartTime(now - totalElapsed);
+                setElapsedTime(totalElapsed);
                 setState('running');
-                setElapsedTime(now - parsed.startTime);
                 setImmersiveMode?.(true);
+                hasRestoredRef.current = true;
+                setIsRunning(true);
              }
            }
         }
@@ -110,6 +133,8 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
     if (state === 'running' || state === 'review') {
       const stateToSave = {
         startTime,
+        elapsedTime,  // Store current elapsed time
+        savedAt: Date.now(),  // Store when we saved so we can calculate drift
         participants,
         isRunning,
         state,
@@ -148,6 +173,7 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
   // Timer effect
   useEffect(() => {
     if (!isRunning) return;
+    if (startTime === 0) return; // Don't start timer if startTime not set yet
 
     const interval = setInterval(() => {
       setElapsedTime(Date.now() - startTime);
@@ -343,6 +369,18 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
     // Let's keep it immersive for review to prevent accidental navigation.
   };
 
+  // Cancel race - reset everything
+  const handleCancelRace = () => {
+    setIsRunning(false);
+    setState('setup');
+    setParticipants([]);
+    setStartTime(0);
+    setElapsedTime(0);
+    setShowCancelConfirm(false);
+    setImmersiveMode?.(false);
+    localStorage.removeItem('current_run_state');
+  };
+
   // Save results to GitHub
   const handleSaveResults = async () => {
     try {
@@ -434,13 +472,20 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
         />
 
         {/* Add Late Runner Button */}
-        <div className="mt-6 text-center">
+        <div className="mt-6 flex justify-center gap-4">
           <Button
             onClick={() => setShowAddLateRunner(true)}
             variant="secondary"
             size="sm"
           >
             ➕ Add Late Runner
+          </Button>
+          <Button
+            onClick={() => setShowCancelConfirm(true)}
+            variant="danger"
+            size="sm"
+          >
+            🚫 Cancel Race
           </Button>
         </div>
 
@@ -513,6 +558,37 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
                   className="flex-1"
                 >
                   Add Runner
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cancel Race Confirmation Modal */}
+        {showCancelConfirm && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-red-500 shadow-2xl">
+              <h3 className="text-xl font-bold mb-4 text-red-400">⚠️ Cancel Race?</h3>
+              <p className="text-gray-300 mb-6">
+                This will <strong>permanently discard</strong> all current race data including times and lap counts. This action cannot be undone.
+              </p>
+              <p className="text-gray-400 text-sm mb-6">
+                Use this if the race was started accidentally.
+              </p>
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => setShowCancelConfirm(false)}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  Keep Racing
+                </Button>
+                <Button
+                  onClick={handleCancelRace}
+                  variant="danger"
+                  className="flex-1"
+                >
+                  Yes, Cancel Race
                 </Button>
               </div>
             </div>

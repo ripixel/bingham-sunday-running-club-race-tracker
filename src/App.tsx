@@ -14,6 +14,7 @@ function App() {
   const [octokit, setOctokit] = useState<Octokit | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>('runners');
   const [immersiveMode, setImmersiveMode] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (token) {
@@ -22,6 +23,24 @@ function App() {
       setOctokit(null);
     }
   }, [token]);
+
+  // Check for active race on mount and auto-redirect
+  useEffect(() => {
+    const savedState = localStorage.getItem('current_run_state');
+    if (savedState) {
+      try {
+        const parsed = JSON.parse(savedState);
+        // If there's an active race (running state with participants)
+        if (parsed.state === 'running' && parsed.participants?.length > 0) {
+          setCurrentPage('tracker');
+          setToast('🏃 Race in progress - resuming...');
+          setTimeout(() => setToast(null), 3000);
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+  }, []);
 
   if (isAuthLoading) {
     return (
@@ -110,6 +129,13 @@ function App() {
           )}
         </div>
       </main>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-green text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

@@ -96,20 +96,20 @@ export function LapCounter({
       {currentStatus === 'finished' && (
         <div className="flex justify-between gap-1 mb-2">
           {/* Small Loop */}
-          <div className="flex-1 bg-gray-900/50 rounded p-1 text-center">
+          <div className="flex-1 shrink-0 min-w-fit bg-gray-900/50 rounded p-1 text-center">
             <div className="text-[10px] uppercase font-bold text-pink mb-1">Small</div>
             <div className="flex items-center justify-center gap-1">
               <button
                 onClick={() => onUpdateLoops(runnerId, 'small', -1)}
                 disabled={smallLoops === 0}
-                className="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-base font-bold no-select"
+                className="btn-compact w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-base font-bold no-select"
               >
                 −
               </button>
               <span className="font-mono font-bold w-6 text-center text-sm">{smallLoops}</span>
               <button
                 onClick={() => onUpdateLoops(runnerId, 'small', 1)}
-                className="w-8 h-8 flex items-center justify-center rounded bg-pink hover:bg-pink/90 text-white text-base font-bold shadow-sm no-select"
+                className="btn-compact w-8 h-8 flex items-center justify-center rounded bg-pink hover:bg-pink/90 text-white text-base font-bold shadow-sm no-select"
               >
                 +
               </button>
@@ -117,20 +117,20 @@ export function LapCounter({
           </div>
 
           {/* Medium Loop */}
-          <div className="flex-1 bg-gray-900/50 rounded p-1 text-center">
+          <div className="flex-1 shrink-0 min-w-fit bg-gray-900/50 rounded p-1 text-center">
             <div className="text-[10px] uppercase font-bold text-green mb-1">Med</div>
             <div className="flex items-center justify-center gap-1">
               <button
                 onClick={() => onUpdateLoops(runnerId, 'medium', -1)}
                 disabled={mediumLoops === 0}
-                className="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-base font-bold no-select"
+                className="btn-compact w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-base font-bold no-select"
               >
                 −
               </button>
               <span className="font-mono font-bold w-6 text-center text-sm">{mediumLoops}</span>
               <button
                 onClick={() => onUpdateLoops(runnerId, 'medium', 1)}
-                className="w-8 h-8 flex items-center justify-center rounded bg-green hover:bg-green/90 text-white text-base font-bold shadow-sm no-select"
+                className="btn-compact w-8 h-8 flex items-center justify-center rounded bg-green hover:bg-green/90 text-white text-base font-bold shadow-sm no-select"
               >
                 +
               </button>
@@ -138,20 +138,20 @@ export function LapCounter({
           </div>
 
           {/* Long Loop */}
-          <div className="flex-1 bg-gray-900/50 rounded p-1 text-center">
+          <div className="flex-1 shrink-0 min-w-fit bg-gray-900/50 rounded p-1 text-center">
             <div className="text-[10px] uppercase font-bold text-blue mb-1">Long</div>
             <div className="flex items-center justify-center gap-1">
               <button
                 onClick={() => onUpdateLoops(runnerId, 'long', -1)}
                 disabled={longLoops === 0}
-                className="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-base font-bold no-select"
+                className="btn-compact w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white text-base font-bold no-select"
               >
                 −
               </button>
               <span className="font-mono font-bold w-6 text-center text-sm">{longLoops}</span>
               <button
                 onClick={() => onUpdateLoops(runnerId, 'long', 1)}
-                className="w-8 h-8 flex items-center justify-center rounded bg-blue hover:bg-blue/90 text-white text-base font-bold shadow-sm no-select"
+                className="btn-compact w-8 h-8 flex items-center justify-center rounded bg-blue hover:bg-blue/90 text-white text-base font-bold shadow-sm no-select"
               >
                 +
               </button>
