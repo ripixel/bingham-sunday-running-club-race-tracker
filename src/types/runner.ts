@@ -6,6 +6,7 @@ export interface Runner {
   name: string;
   anonymous: boolean;
   photo?: string;
+  colorClass?: 'orange' | 'pink' | 'green' | 'blue';
   joinedDate?: string; // ISO date string
   startingValues?: {
     eventsAttended?: number;

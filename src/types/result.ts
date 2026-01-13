@@ -62,7 +62,7 @@ export interface RunResult {
   eventTitle: string;
   eventDescription?: string;
   location: string;
-  mainPhoto: string;
+  mainPhoto?: string;
   weather?: string;
   isSpecialEvent: boolean;
   participants: Participant[];
