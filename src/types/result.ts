@@ -46,6 +46,7 @@ export const LOOP_CONFIGS: Record<'small' | 'medium' | 'long', LoopConfig> = {
  */
 export interface Participant {
   runner: string; // Runner ID (slug) or "guest"
+  guestName?: string; // Display name for guests (only when runner="guest")
   distance: number; // Total distance in km
   smallLoops: number;
   mediumLoops: number;
@@ -84,5 +85,6 @@ export interface LiveParticipant {
   startTime: number; // Timestamp in ms
   finishTime?: number; // Elapsed time in ms when finished
   status: 'running' | 'finished' | 'completed';
+  convertToRunner?: boolean; // Flag to create full runner on submit
+  runnerNameOverride?: string; // Custom name for runner conversion (defaults to nickname)
 }
-

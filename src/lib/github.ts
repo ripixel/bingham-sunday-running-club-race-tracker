@@ -203,6 +203,7 @@ function formatTime(milliseconds: number): string {
 
 /**
  * Create a run result file in the repository (Staging Flow)
+ * Uses Git tree/commit API to batch all changes into a single commit
  */
 export async function createRunResult(
   octokit: Octokit,
@@ -213,6 +214,9 @@ export async function createRunResult(
     description?: string;
     participants: Array<{
       runnerId: string;
+      nickname?: string; // Guest display name
+      convertToRunner?: boolean; // Create full runner profile
+      runnerNameOverride?: string; // Name for new runner (defaults to nickname)
       smallLoops: number;
       mediumLoops: number;
       longLoops: number;
@@ -224,45 +228,147 @@ export async function createRunResult(
   try {
     const dateStr = data.date.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    // 1. Upload Race Photo
-    const photoPath = `assets/images/races/${dateStr}.jpg`;
-    const photoUrl = await uploadImage(
-      octokit,
-      data.photoBlob,
-      photoPath,
-      `feat(images): add race photo for ${dateStr}`
-    );
+    // Collect all files to create in one commit
+    const filesToCreate: Array<{ path: string; content: string; isBase64?: boolean }> = [];
+    const runnerIdMap: Record<string, string> = {}; // guest-xxx -> new-runner-id
 
-    // 2. Prepare Staging Data
+    // 1. Prepare race photo blob
+    const photoPath = `assets/images/races/${dateStr}.jpg`;
+    const photoArrayBuffer = await data.photoBlob.arrayBuffer();
+    const photoBytes = new Uint8Array(photoArrayBuffer);
+    let photoBinary = '';
+    for (let i = 0; i < photoBytes.byteLength; i++) {
+      photoBinary += String.fromCharCode(photoBytes[i]);
+    }
+    const photoBase64 = btoa(photoBinary);
+    filesToCreate.push({ path: photoPath, content: photoBase64, isBase64: true });
+    const photoUrl = `/${photoPath.replace(/^assets\//, '')}`;
+
+    // 2. Prepare any guest-to-runner conversions
+    for (const p of data.participants) {
+      if (p.convertToRunner && p.runnerId.startsWith('guest-')) {
+        const runnerName = p.runnerNameOverride || p.nickname || 'New Runner';
+        const runnerId = runnerName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
+
+        const newRunner: Runner = {
+          id: runnerId,
+          name: runnerName,
+          anonymous: false,
+          joinedDate: dateStr,
+        };
+
+        filesToCreate.push({
+          path: `content/runners/${runnerId}.json`,
+          content: JSON.stringify(newRunner, null, 2),
+        });
+
+        runnerIdMap[p.runnerId] = runnerId;
+      }
+    }
+
+    // 3. Prepare Staging Data
     const stagingData = {
       date: data.date.toISOString(),
       mainPhoto: photoUrl,
       title: data.title || undefined,
       body: data.description || undefined,
-      participants: data.participants.map((p) => ({
-        runner: p.runnerId.startsWith('guest-') ? 'guest' : p.runnerId,
-        smallLoops: p.smallLoops,
-        mediumLoops: p.mediumLoops,
-        longLoops: p.longLoops,
-        time: formatTime(p.endTime - p.startTime),
-      })),
+      participants: data.participants.map((p) => {
+        const isGuest = p.runnerId.startsWith('guest-');
+        const convertedId = runnerIdMap[p.runnerId];
+        const runnerId = convertedId || (isGuest ? 'guest' : p.runnerId);
+
+        return {
+          runner: runnerId,
+          ...(isGuest && !convertedId && p.nickname ? { guestName: p.nickname } : {}),
+          smallLoops: p.smallLoops,
+          mediumLoops: p.mediumLoops,
+          longLoops: p.longLoops,
+          time: formatTime(p.endTime - p.startTime),
+        };
+      }),
     };
 
-    // 3. Commit Staging JSON
     const stagingPath = `content/staging/runs/${dateStr}.json`;
-    const content = JSON.stringify(stagingData, null, 2);
+    filesToCreate.push({
+      path: stagingPath,
+      content: JSON.stringify(stagingData, null, 2),
+    });
 
-    // Check if file exists and get its SHA
-    const sha = await getFileSha(octokit, stagingPath);
-
-    await octokit.rest.repos.createOrUpdateFileContents({
+    // 4. Create all files in a single commit using Git Data API
+    // Get the current commit SHA
+    const { data: refData } = await octokit.rest.git.getRef({
       owner: GITHUB_OWNER,
       repo: GITHUB_REPO,
-      path: stagingPath,
-      message: `feat(runs): add run data for ${dateStr}`,
-      content: base64Encode(content),
-      branch: GITHUB_BRANCH,
-      ...(sha && { sha }), // Include SHA if file exists
+      ref: `heads/${GITHUB_BRANCH}`,
+    });
+    const latestCommitSha = refData.object.sha;
+
+    // Get the tree SHA of the current commit
+    const { data: commitData } = await octokit.rest.git.getCommit({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      commit_sha: latestCommitSha,
+    });
+    const baseTreeSha = commitData.tree.sha;
+
+    // Create blobs for each file
+    const treeItems: Array<{
+      path: string;
+      mode: '100644';
+      type: 'blob';
+      sha: string;
+    }> = [];
+
+    for (const file of filesToCreate) {
+      const { data: blobData } = await octokit.rest.git.createBlob({
+        owner: GITHUB_OWNER,
+        repo: GITHUB_REPO,
+        content: file.content,
+        encoding: file.isBase64 ? 'base64' : 'utf-8',
+      });
+
+      treeItems.push({
+        path: file.path,
+        mode: '100644',
+        type: 'blob',
+        sha: blobData.sha,
+      });
+    }
+
+    // Create a new tree with all the files
+    const { data: newTree } = await octokit.rest.git.createTree({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      base_tree: baseTreeSha,
+      tree: treeItems,
+    });
+
+    // Build commit message
+    const newRunnerCount = Object.keys(runnerIdMap).length;
+    let commitMessage = `feat(runs): add run data for ${dateStr}`;
+    if (newRunnerCount > 0) {
+      const runnerNames = Object.values(runnerIdMap).join(', ');
+      commitMessage += `\n\nNew runners: ${runnerNames}`;
+    }
+
+    // Create the commit
+    const { data: newCommit } = await octokit.rest.git.createCommit({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      message: commitMessage,
+      tree: newTree.sha,
+      parents: [latestCommitSha],
+    });
+
+    // Update the branch reference
+    await octokit.rest.git.updateRef({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      ref: `heads/${GITHUB_BRANCH}`,
+      sha: newCommit.sha,
     });
 
   } catch (error) {
@@ -270,6 +376,7 @@ export async function createRunResult(
     throw error;
   }
 }
+
 
 /**
  * Fetch the latest run times for sorting (Seed Order)
@@ -342,5 +449,88 @@ export async function fetchLatestRunTimes(octokit: Octokit): Promise<Record<stri
   } catch (error) {
     console.warn('Failed to fetch latest run times:', error);
     return {};
+  }
+}
+
+/**
+ * Staged run data structure for loading previously staged runs
+ */
+export interface StagedRun {
+  date: string;         // YYYY-MM-DD from filename
+  dateTime: string;     // Full ISO from JSON
+  mainPhoto: string;    // Path to photo
+  title?: string;
+  body?: string;
+  participants: Array<{
+    runner: string;
+    guestName?: string;
+    smallLoops: number;
+    mediumLoops: number;
+    longLoops: number;
+    time: string;       // MM:SS or HH:MM:SS format
+  }>;
+}
+
+/**
+ * Fetch all staged runs from the repository
+ */
+export async function fetchStagedRuns(octokit: Octokit): Promise<StagedRun[]> {
+  try {
+    const { data } = await octokit.rest.repos.getContent({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      path: 'content/staging/runs',
+      ref: GITHUB_BRANCH,
+    });
+
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    const stagedRuns: StagedRun[] = [];
+
+    // Filter for JSON files only
+    const runFiles = data.filter(file =>
+      file.type === 'file' &&
+      file.name.endsWith('.json')
+    );
+
+    for (const file of runFiles) {
+      const { data: fileData } = await octokit.rest.repos.getContent({
+        owner: GITHUB_OWNER,
+        repo: GITHUB_REPO,
+        path: file.path,
+        ref: GITHUB_BRANCH,
+      });
+
+      if ('content' in fileData) {
+        const content = base64Decode(fileData.content);
+        try {
+          const runData = JSON.parse(content);
+          const dateFromFilename = file.name.replace('.json', '');
+
+          stagedRuns.push({
+            date: dateFromFilename,
+            dateTime: runData.date,
+            mainPhoto: runData.mainPhoto,
+            title: runData.title,
+            body: runData.body,
+            participants: runData.participants,
+          });
+        } catch (e) {
+          console.warn(`Failed to parse staged run file: ${file.path}`, e);
+        }
+      }
+    }
+
+    // Sort by date descending (newest first)
+    return stagedRuns.sort((a, b) => b.date.localeCompare(a.date));
+  } catch (error: any) {
+    // Directory doesn't exist (404) or empty
+    if (error.status === 404) {
+      return [];
+    }
+    console.error('Failed to fetch staged runs:', error);
+    throw error;
   }
 }

@@ -4,8 +4,9 @@ import { Button } from '../components/ui/Button';
 import { Timer } from '../components/ui/Timer';
 import { RunnerSelector } from '../components/tracker/RunnerSelector';
 import { TrackerGrid } from '../components/tracker/TrackerGrid';
-import { fetchRunners, createRunResult, fetchLatestRunTimes } from '../lib/github';
+import { fetchRunners, createRunResult, fetchLatestRunTimes, fetchStagedRuns } from '../lib/github';
 import type { Runner, TrackedRunner } from '../types/runner';
+import type { StagedRun } from '../lib/github';
 import type { LiveParticipant } from '../types/result';
 
 interface TrackerPageProps {
@@ -44,6 +45,12 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
   // Custom Run Details
   const [runTitle, setRunTitle] = useState('');
   const [runDescription, setRunDescription] = useState('');
+
+  // Re-upload staged run state
+  const [showReUploadModal, setShowReUploadModal] = useState(false);
+  const [stagedRuns, setStagedRuns] = useState<StagedRun[]>([]);
+  const [isLoadingStagedRuns, setIsLoadingStagedRuns] = useState(false);
+  const [reUploadDate, setReUploadDate] = useState<string | null>(null); // Track if we're re-uploading
 
   // Load runners on mount
   useEffect(() => {
@@ -226,6 +233,7 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
       // For guests, we write "guest" to the repo later, but keep unique ID for tracking state
       repoId: runner.id.startsWith('guest-') ? 'guest' : runner.id,
       runnerName: runner.nickname || runner.name,
+      nickname: runner.nickname, // Preserve for guests
       smallLoops: 0,
       mediumLoops: 0,
       longLoops: 0,
@@ -345,6 +353,7 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
         runnerId: guestId,
         repoId: 'guest',
         runnerName: lateRunnerName.trim(),
+        nickname: lateRunnerName.trim(), // Preserve nickname for guests
         smallLoops: 0,
         mediumLoops: 0,
         longLoops: 0,
@@ -384,7 +393,8 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
   // Save results to GitHub
   const handleSaveResults = async () => {
     try {
-      const now = new Date();
+      // Use the original date if re-uploading, otherwise current date
+      const dateToUse = reUploadDate ? new Date(reUploadDate) : new Date();
 
       if (!racePhoto) {
         alert('Please take/upload a race photo first!');
@@ -392,10 +402,13 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
       }
 
       await createRunResult(octokit, {
-        date: now,
+        date: dateToUse,
         photoBlob: racePhoto,
         participants: participants.map((p) => ({
-          runnerId: p.repoId || (p.runnerId.startsWith('guest-') ? 'guest' : p.runnerId),
+          runnerId: p.runnerId, // Use full runnerId for conversion logic
+          nickname: p.nickname,
+          convertToRunner: p.convertToRunner,
+          runnerNameOverride: p.runnerNameOverride,
           smallLoops: p.smallLoops,
           mediumLoops: p.mediumLoops,
           longLoops: p.longLoops,
@@ -415,12 +428,69 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
       setRacePhoto(null);
       setRunTitle('');
       setRunDescription('');
+      setReUploadDate(null);
       setImmersiveMode?.(false);
       localStorage.removeItem('current_run_state');
     } catch (error) {
       console.error('Failed to save results:', error);
       alert('Failed to save results. Please try again.');
     }
+  };
+
+  // Open re-upload modal and fetch staged runs
+  const handleOpenReUpload = async () => {
+    setShowReUploadModal(true);
+    setIsLoadingStagedRuns(true);
+    try {
+      const runs = await fetchStagedRuns(octokit);
+      setStagedRuns(runs);
+    } catch (error) {
+      console.error('Failed to fetch staged runs:', error);
+      alert('Failed to load staged runs.');
+    } finally {
+      setIsLoadingStagedRuns(false);
+    }
+  };
+
+  // Parse time string (MM:SS or HH:MM:SS) to milliseconds
+  const parseTimeToMs = (timeStr: string): number => {
+    const parts = timeStr.split(':').map(Number);
+    if (parts.length === 3) {
+      // HH:MM:SS
+      return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
+    }
+    // MM:SS
+    return (parts[0] * 60 + parts[1]) * 1000;
+  };
+
+  // Load a staged run into review state
+  const handleLoadStagedRun = (run: StagedRun) => {
+    // Convert staged run participants to LiveParticipant format
+    const now = Date.now();
+    const loadedParticipants: LiveParticipant[] = run.participants.map((p, index) => {
+      const timeMs = parseTimeToMs(p.time);
+      const isGuest = p.runner === 'guest';
+
+      return {
+        runnerId: isGuest ? `guest-reupload-${index}` : p.runner,
+        repoId: p.runner,
+        runnerName: p.guestName || runners.find(r => r.id === p.runner)?.name || p.runner,
+        nickname: isGuest ? p.guestName : undefined,
+        smallLoops: p.smallLoops,
+        mediumLoops: p.mediumLoops,
+        longLoops: p.longLoops,
+        startTime: now - timeMs, // Fake start time so finishTime calculation works
+        finishTime: timeMs,
+        status: 'completed',
+      };
+    });
+
+    setParticipants(loadedParticipants);
+    setRunTitle(run.title || '');
+    setRunDescription(run.body || '');
+    setReUploadDate(run.date);
+    setShowReUploadModal(false);
+    setState('review');
   };
 
   // Loading state
@@ -435,7 +505,71 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
 
   // Setup state - select runners
   if (state === 'setup') {
-    return <RunnerSelector runners={runners} onStartRun={handleStartRun} />;
+    return (
+      <div>
+        <RunnerSelector runners={runners} onStartRun={handleStartRun} />
+
+        {/* Re-Upload Section */}
+        <div className="mt-8 pt-6 border-t border-gray-700">
+          <div className="text-center">
+            <p className="text-gray-400 text-sm mb-3">Need to fix a previously uploaded run?</p>
+            <Button onClick={handleOpenReUpload} variant="secondary" size="sm">
+              📂 Re-Upload Staged Run
+            </Button>
+          </div>
+        </div>
+
+        {/* Re-Upload Modal */}
+        {showReUploadModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-600 shadow-2xl max-h-[80vh] overflow-y-auto">
+              <h3 className="text-xl font-bold mb-4 text-orange">Re-Upload Staged Run</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Select a previously staged run to re-upload with corrections.
+              </p>
+
+              {isLoadingStagedRuns ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange"></div>
+                  <span className="ml-3 text-gray-400">Loading staged runs...</span>
+                </div>
+              ) : stagedRuns.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No staged runs found.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {stagedRuns.map((run) => (
+                    <button
+                      key={run.date}
+                      onClick={() => handleLoadStagedRun(run)}
+                      className="w-full text-left p-4 bg-gray-700 hover:bg-gray-600 rounded-lg border border-gray-600 transition-colors"
+                    >
+                      <div className="font-semibold text-white">{run.date}</div>
+                      <div className="text-sm text-gray-400 mt-1">
+                        {run.participants.length} participants
+                        {run.title && <span className="ml-2">• {run.title}</span>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Cancel */}
+              <div className="mt-6">
+                <Button
+                  onClick={() => setShowReUploadModal(false)}
+                  variant="secondary"
+                  className="w-full"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   // Running state - track loops
@@ -607,21 +741,91 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
           <h3 className="font-semibold mb-4">Run Summary</h3>
           <div className="space-y-3">
-            {participants.map((p) => (
-              <div key={p.runnerId + p.runnerName} className="flex justify-between items-center">
-                <span>{p.runnerName}</span>
-                <span className="text-gray-400">
-                  {p.smallLoops + p.mediumLoops + p.longLoops} loops • {formatTime(p.finishTime || 0)}
-                </span>
-              </div>
-            ))}
+            {participants.map((p) => {
+              const isGuest = p.runnerId.startsWith('guest-');
+              return (
+                <div key={p.runnerId + p.runnerName} className="p-3 bg-gray-700/50 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">{p.runnerName}</span>
+                    <span className="text-gray-400">
+                      {p.smallLoops + p.mediumLoops + p.longLoops} loops • {formatTime(p.finishTime || 0)}
+                    </span>
+                  </div>
+                  {/* Guest conversion checkbox */}
+                  {isGuest && (
+                    <div className="mt-3 pt-3 border-t border-gray-600">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={p.convertToRunner || false}
+                          onChange={(e) => {
+                            setParticipants(prev => prev.map(part =>
+                              part.runnerId === p.runnerId
+                                ? { ...part, convertToRunner: e.target.checked }
+                                : part
+                            ));
+                          }}
+                          className="w-4 h-4 rounded border-gray-500 text-green focus:ring-green"
+                        />
+                        <span className="text-sm text-green">Make Full Runner</span>
+                      </label>
+                      {p.convertToRunner && (
+                        <div className="mt-2">
+                          <input
+                            type="text"
+                            value={p.runnerNameOverride || p.nickname || ''}
+                            onChange={(e) => {
+                              setParticipants(prev => prev.map(part =>
+                                part.runnerId === p.runnerId
+                                  ? { ...part, runnerNameOverride: e.target.value }
+                                  : part
+                              ));
+                            }}
+                            placeholder="Runner name"
+                            className="w-full px-3 py-2 text-sm bg-gray-600 border border-gray-500 rounded text-white focus:border-green focus:outline-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          </div>
+        </div>
 
 
         <div className="space-y-4">
+          {/* Re-Upload Banner */}
+          {reUploadDate && (
+            <div className="bg-orange/20 border border-orange rounded-lg p-4 mb-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-orange font-semibold">📂 Re-Uploading:</span>
+                  <span className="ml-2 text-white">{reUploadDate}</span>
+                </div>
+                <Button
+                  onClick={() => {
+                    setState('setup');
+                    setParticipants([]);
+                    setReUploadDate(null);
+                    setRunTitle('');
+                    setRunDescription('');
+                  }}
+                  variant="secondary"
+                  size="sm"
+                >
+                  Cancel
+                </Button>
+              </div>
+              <p className="text-sm text-gray-300 mt-2">
+                This will update the existing staged run. Photo is optional if you want to keep the original.
+              </p>
+            </div>
+          )}
+
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-            <h2 className="text-2xl font-bold mb-4">Run Complete! 🏁</h2>
+            <h2 className="text-2xl font-bold mb-4">{reUploadDate ? 'Confirm Re-Upload' : 'Run Complete! 🏁'}</h2>
             <div className="text-4xl font-mono font-bold text-green mb-2">
               {/* If we have an exact time from handleEndRun, we could use it, but elapsedTime is fine */}
               {/* Note: In review state, elapsedTime holds the final time */}
@@ -663,7 +867,10 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
           <h3 className="font-semibold mb-4">Race Photo 📸</h3>
           <p className="text-gray-400 text-sm mb-4">
-             Take a photo of the group or the finishing moment. This is required for the website.
+            {reUploadDate
+              ? 'Upload the photo for this run. You can re-use the original photo or upload a new one.'
+              : 'Take a photo of the group or the finishing moment. This is required for the website.'
+            }
           </p>
           <input
             type="file"
