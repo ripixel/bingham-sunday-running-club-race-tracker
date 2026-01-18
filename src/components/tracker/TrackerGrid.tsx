@@ -5,6 +5,7 @@ interface TrackerGridProps {
   participants: LiveParticipant[];
   globalElapsedTime: number;
   onUpdateLoops: (runnerId: string, type: 'small' | 'medium' | 'long', delta: number) => void;
+  onUpdateTime?: (runnerId: string, newTimeMs: number) => void;
   onFinish: (runnerId: string) => void;
   onComplete: (runnerId: string) => void;
   onUndoComplete: (runnerId: string) => void;
@@ -15,6 +16,7 @@ export function TrackerGrid({
   participants,
   globalElapsedTime,
   onUpdateLoops,
+  onUpdateTime,
   onFinish,
   onComplete,
   onUndoComplete,
@@ -49,6 +51,7 @@ export function TrackerGrid({
                 participant={participant}
                 globalElapsedTime={globalElapsedTime}
                 onUpdateLoops={onUpdateLoops}
+                onUpdateTime={onUpdateTime}
                 onFinish={onFinish}
                 onComplete={onComplete}
                 onUndoComplete={onUndoComplete}
@@ -73,6 +76,7 @@ export function TrackerGrid({
                 participant={participant}
                 globalElapsedTime={globalElapsedTime}
                 onUpdateLoops={onUpdateLoops}
+                onUpdateTime={onUpdateTime}
                 onFinish={onFinish}
                 onComplete={onComplete}
                 onUndoComplete={onUndoComplete}
@@ -97,6 +101,7 @@ export function TrackerGrid({
                 participant={participant}
                 globalElapsedTime={globalElapsedTime}
                 onUpdateLoops={onUpdateLoops}
+                onUpdateTime={onUpdateTime}
                 onFinish={onFinish}
                 onComplete={onComplete}
                 onUndoComplete={onUndoComplete}

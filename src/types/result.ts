@@ -9,6 +9,12 @@ export interface LoopConfig {
 }
 
 /**
+ * The approach distance (km) - from start to first loop junction and back
+ * This is added once per run (not per loop)
+ */
+export const APPROACH_DISTANCE = 0.55;
+
+/**
  * Loop distances for the running club (simple accessor)
  */
 export const LOOP_DISTANCES = {

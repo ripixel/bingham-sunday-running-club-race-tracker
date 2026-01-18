@@ -189,18 +189,7 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
     return () => clearInterval(interval);
   }, [isRunning, startTime]);
 
-  // Format time display
-  const formatTime = (ms: number): string => {
-    const totalSeconds = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
 
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
 
   // Handle starting the run
   const handleStartRun = (selectedRunners: TrackedRunner[]) => {
@@ -319,6 +308,21 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
           return {
             ...p,
             status: 'finished',
+          };
+        }
+        return p;
+      })
+    );
+  }, []);
+
+  // Update finish time directly (for time adjustments)
+  const handleUpdateTime = useCallback((runnerId: string, newTimeMs: number) => {
+    setParticipants((prev) =>
+      prev.map((p) => {
+        if (p.runnerId === runnerId) {
+          return {
+            ...p,
+            finishTime: newTimeMs,
           };
         }
         return p;
@@ -599,6 +603,7 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
           participants={participants}
           globalElapsedTime={elapsedTime}
           onUpdateLoops={handleUpdateLoops}
+          onUpdateTime={handleUpdateTime}
           onFinish={handleFinish}
           onComplete={handleComplete}
           onUndoComplete={handleUndoComplete}
@@ -739,18 +744,159 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
         <h2 className="text-2xl font-bold mb-6">Review Results</h2>
 
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-          <h3 className="font-semibold mb-4">Run Summary</h3>
-          <div className="space-y-3">
+          <h3 className="font-semibold mb-4">Run Summary — Edit Participants</h3>
+          <div className="space-y-4">
             {participants.map((p) => {
               const isGuest = p.runnerId.startsWith('guest-');
+              const finishMinutes = Math.floor((p.finishTime || 0) / 60000);
+              const finishSeconds = Math.floor(((p.finishTime || 0) % 60000) / 1000);
+
               return (
-                <div key={p.runnerId + p.runnerName} className="p-3 bg-gray-700/50 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">{p.runnerName}</span>
-                    <span className="text-gray-400">
-                      {p.smallLoops + p.mediumLoops + p.longLoops} loops • {formatTime(p.finishTime || 0)}
-                    </span>
+                <div key={p.runnerId + p.runnerName} className="p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                  {/* Name Row */}
+                  <div className="flex items-center justify-between mb-3">
+                    {isGuest ? (
+                      <div className="flex-1 mr-4">
+                        <label className="block text-xs text-gray-400 mb-1">Guest Name</label>
+                        <input
+                          type="text"
+                          value={p.nickname || p.runnerName || ''}
+                          onChange={(e) => {
+                            setParticipants(prev => prev.map(part =>
+                              part.runnerId === p.runnerId
+                                ? { ...part, nickname: e.target.value, runnerName: e.target.value }
+                                : part
+                            ));
+                          }}
+                          placeholder="Enter name"
+                          className="w-full px-3 py-2 text-sm bg-gray-600 border border-gray-500 rounded text-white focus:border-orange focus:outline-none"
+                        />
+                      </div>
+                    ) : (
+                      <span className="font-medium text-lg">{p.runnerName}</span>
+                    )}
+                    <span className="text-sm text-gray-400">{isGuest ? '(Guest)' : ''}</span>
                   </div>
+
+                  {/* Time Edit */}
+                  <div className="mb-3">
+                    <label className="block text-xs text-gray-400 mb-1">Finish Time</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        max="999"
+                        value={finishMinutes}
+                        onChange={(e) => {
+                          const mins = Math.max(0, parseInt(e.target.value) || 0);
+                          const newTime = (mins * 60 + finishSeconds) * 1000;
+                          setParticipants(prev => prev.map(part =>
+                            part.runnerId === p.runnerId
+                              ? { ...part, finishTime: newTime }
+                              : part
+                          ));
+                        }}
+                        className="w-16 px-2 py-2 text-center text-lg font-mono bg-gray-600 border border-gray-500 rounded text-white focus:border-orange focus:outline-none"
+                      />
+                      <span className="text-gray-400 text-lg">:</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={finishSeconds.toString().padStart(2, '0')}
+                        onChange={(e) => {
+                          const secs = Math.min(59, Math.max(0, parseInt(e.target.value) || 0));
+                          const newTime = (finishMinutes * 60 + secs) * 1000;
+                          setParticipants(prev => prev.map(part =>
+                            part.runnerId === p.runnerId
+                              ? { ...part, finishTime: newTime }
+                              : part
+                          ));
+                        }}
+                        className="w-16 px-2 py-2 text-center text-lg font-mono bg-gray-600 border border-gray-500 rounded text-white focus:border-orange focus:outline-none"
+                      />
+                      <span className="text-gray-500 text-sm ml-2">(mm:ss)</span>
+                    </div>
+                  </div>
+
+                  {/* Loop Counts */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* Small Loops */}
+                    <div className="bg-gray-800/50 rounded p-2 text-center">
+                      <div className="text-xs uppercase font-bold text-pink mb-1">Small</div>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => setParticipants(prev => prev.map(part =>
+                            part.runnerId === p.runnerId
+                              ? { ...part, smallLoops: Math.max(0, part.smallLoops - 1) }
+                              : part
+                          ))}
+                          disabled={p.smallLoops === 0}
+                          className="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white font-bold"
+                        >−</button>
+                        <span className="font-mono font-bold w-8 text-center">{p.smallLoops}</span>
+                        <button
+                          onClick={() => setParticipants(prev => prev.map(part =>
+                            part.runnerId === p.runnerId
+                              ? { ...part, smallLoops: part.smallLoops + 1 }
+                              : part
+                          ))}
+                          className="w-8 h-8 flex items-center justify-center rounded bg-pink hover:bg-pink/90 text-white font-bold"
+                        >+</button>
+                      </div>
+                    </div>
+
+                    {/* Medium Loops */}
+                    <div className="bg-gray-800/50 rounded p-2 text-center">
+                      <div className="text-xs uppercase font-bold text-green mb-1">Medium</div>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => setParticipants(prev => prev.map(part =>
+                            part.runnerId === p.runnerId
+                              ? { ...part, mediumLoops: Math.max(0, part.mediumLoops - 1) }
+                              : part
+                          ))}
+                          disabled={p.mediumLoops === 0}
+                          className="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white font-bold"
+                        >−</button>
+                        <span className="font-mono font-bold w-8 text-center">{p.mediumLoops}</span>
+                        <button
+                          onClick={() => setParticipants(prev => prev.map(part =>
+                            part.runnerId === p.runnerId
+                              ? { ...part, mediumLoops: part.mediumLoops + 1 }
+                              : part
+                          ))}
+                          className="w-8 h-8 flex items-center justify-center rounded bg-green hover:bg-green/90 text-white font-bold"
+                        >+</button>
+                      </div>
+                    </div>
+
+                    {/* Long Loops */}
+                    <div className="bg-gray-800/50 rounded p-2 text-center">
+                      <div className="text-xs uppercase font-bold text-blue mb-1">Long</div>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => setParticipants(prev => prev.map(part =>
+                            part.runnerId === p.runnerId
+                              ? { ...part, longLoops: Math.max(0, part.longLoops - 1) }
+                              : part
+                          ))}
+                          disabled={p.longLoops === 0}
+                          className="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white font-bold"
+                        >−</button>
+                        <span className="font-mono font-bold w-8 text-center">{p.longLoops}</span>
+                        <button
+                          onClick={() => setParticipants(prev => prev.map(part =>
+                            part.runnerId === p.runnerId
+                              ? { ...part, longLoops: part.longLoops + 1 }
+                              : part
+                          ))}
+                          className="w-8 h-8 flex items-center justify-center rounded bg-blue hover:bg-blue/90 text-white font-bold"
+                        >+</button>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Guest conversion checkbox */}
                   {isGuest && (
                     <div className="mt-3 pt-3 border-t border-gray-600">
@@ -781,7 +927,7 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
                                   : part
                               ));
                             }}
-                            placeholder="Runner name"
+                            placeholder="Runner name for profile"
                             className="w-full px-3 py-2 text-sm bg-gray-600 border border-gray-500 rounded text-white focus:border-green focus:outline-none"
                           />
                         </div>

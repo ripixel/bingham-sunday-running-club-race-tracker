@@ -1,11 +1,12 @@
 import { Button } from '../ui/Button';
-import { LOOP_DISTANCES } from '../../types/result';
+import { APPROACH_DISTANCE, LOOP_DISTANCES } from '../../types/result';
 import type { LiveParticipant } from '../../types/result';
 
 interface LapCounterProps {
   participant: LiveParticipant;
   globalElapsedTime: number;
   onUpdateLoops: (runnerId: string, type: 'small' | 'medium' | 'long', delta: number) => void;
+  onUpdateTime?: (runnerId: string, newTimeMs: number) => void;
   onFinish: (runnerId: string) => void;
   onComplete: (runnerId: string) => void;
   onUndoComplete: (runnerId: string) => void;
@@ -13,18 +14,22 @@ interface LapCounterProps {
 }
 
 // Helper function for distance calculation
+// Includes the approach distance (to/from start) when there are any loops
 const calculateDistance = (smallLoops: number, mediumLoops: number, longLoops: number): number => {
-  return (
+  const totalLoops = smallLoops + mediumLoops + longLoops;
+  const loopDistance =
     smallLoops * LOOP_DISTANCES.small +
     mediumLoops * LOOP_DISTANCES.medium +
-    longLoops * LOOP_DISTANCES.long
-  );
+    longLoops * LOOP_DISTANCES.long;
+  // Only add approach distance if there are any loops
+  return totalLoops > 0 ? APPROACH_DISTANCE + loopDistance : 0;
 };
 
 export function LapCounter({
   participant,
   globalElapsedTime,
   onUpdateLoops,
+  onUpdateTime,
   onFinish,
   onComplete,
   onUndoComplete,
@@ -79,7 +84,24 @@ export function LapCounter({
         <h3 className="font-bold text-sm truncate flex-1 mr-2">{runnerName}</h3>
         <div className="text-right text-xs">
           <span className="font-mono font-bold">{distance.toFixed(1)}km</span>
-          <span className="text-gray-400 ml-1">{formatTime(elapsedTime)}</span>
+          {/* Time display with edit controls for finished/completed */}
+          {(currentStatus === 'finished' || currentStatus === 'completed') && onUpdateTime && finishTime !== undefined ? (
+            <span className="ml-1 inline-flex items-center gap-1">
+              <button
+                onClick={() => onUpdateTime(runnerId, Math.max(0, finishTime - 5000))}
+                className="w-5 h-5 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold"
+                title="Subtract 5 seconds"
+              >−</button>
+              <span className="font-mono text-orange">{formatTime(finishTime)}</span>
+              <button
+                onClick={() => onUpdateTime(runnerId, finishTime + 5000)}
+                className="w-5 h-5 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold"
+                title="Add 5 seconds"
+              >+</button>
+            </span>
+          ) : (
+            <span className="text-gray-400 ml-1">{formatTime(elapsedTime)}</span>
+          )}
         </div>
       </div>
 
