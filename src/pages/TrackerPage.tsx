@@ -875,7 +875,6 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
           <input
             type="file"
             accept="image/*"
-            capture="environment" // Prefer rear camera on mobile
             onChange={(e) => {
               if (e.target.files && e.target.files[0]) {
                 setRacePhoto(e.target.files[0]);
