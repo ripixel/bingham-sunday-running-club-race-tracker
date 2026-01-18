@@ -492,7 +492,8 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
     setParticipants(loadedParticipants);
     setRunTitle(run.title || '');
     setRunDescription(run.body || '');
-    setReUploadDate(run.date);
+    // Use the full dateTime to preserve original time, not just the date
+    setReUploadDate(run.dateTime);
     setShowReUploadModal(false);
     setState('review');
   };
