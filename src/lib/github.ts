@@ -209,7 +209,7 @@ export async function createRunResult(
   octokit: Octokit,
   data: {
     date: Date;
-    photoBlob: Blob;
+    photoBlob?: Blob;  // Optional - website has fallback SVG
     title?: string;
     description?: string;
     participants: Array<{
@@ -232,17 +232,20 @@ export async function createRunResult(
     const filesToCreate: Array<{ path: string; content: string; isBase64?: boolean }> = [];
     const runnerIdMap: Record<string, string> = {}; // guest-xxx -> new-runner-id
 
-    // 1. Prepare race photo blob
-    const photoPath = `assets/images/races/${dateStr}.jpg`;
-    const photoArrayBuffer = await data.photoBlob.arrayBuffer();
-    const photoBytes = new Uint8Array(photoArrayBuffer);
-    let photoBinary = '';
-    for (let i = 0; i < photoBytes.byteLength; i++) {
-      photoBinary += String.fromCharCode(photoBytes[i]);
+    // 1. Prepare race photo blob (if provided)
+    let photoUrl: string | undefined;
+    if (data.photoBlob) {
+      const photoPath = `assets/images/races/${dateStr}.jpg`;
+      const photoArrayBuffer = await data.photoBlob.arrayBuffer();
+      const photoBytes = new Uint8Array(photoArrayBuffer);
+      let photoBinary = '';
+      for (let i = 0; i < photoBytes.byteLength; i++) {
+        photoBinary += String.fromCharCode(photoBytes[i]);
+      }
+      const photoBase64 = btoa(photoBinary);
+      filesToCreate.push({ path: photoPath, content: photoBase64, isBase64: true });
+      photoUrl = `/${photoPath.replace(/^assets\//, '')}`;
     }
-    const photoBase64 = btoa(photoBinary);
-    filesToCreate.push({ path: photoPath, content: photoBase64, isBase64: true });
-    const photoUrl = `/${photoPath.replace(/^assets\//, '')}`;
 
     // 2. Prepare any guest-to-runner conversions
     for (const p of data.participants) {

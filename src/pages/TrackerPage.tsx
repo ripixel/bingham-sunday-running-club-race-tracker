@@ -33,8 +33,16 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
   const [lateRunnerName, setLateRunnerName] = useState('');
   const [selectedLateRunner, setSelectedLateRunner] = useState<string>('');
 
+  // Remove runner state (mid-race)
+  const [showRemoveRunner, setShowRemoveRunner] = useState(false);
+
   // Cancel race state
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  // Add runner state (review screen)
+  const [showAddRunnerReview, setShowAddRunnerReview] = useState(false);
+  const [reviewRunnerName, setReviewRunnerName] = useState('');
+  const [selectedReviewRunner, setSelectedReviewRunner] = useState<string>('');
 
   // Ref to track if we've restored from localStorage (to force timer effect to kick in)
   const hasRestoredRef = useRef(false);
@@ -51,6 +59,9 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
   const [stagedRuns, setStagedRuns] = useState<StagedRun[]>([]);
   const [isLoadingStagedRuns, setIsLoadingStagedRuns] = useState(false);
   const [reUploadDate, setReUploadDate] = useState<string | null>(null); // Track if we're re-uploading
+
+  // Save loading state
+  const [isSaving, setIsSaving] = useState(false);
 
   // Load runners on mount
   useEffect(() => {
@@ -373,6 +384,56 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
     setSelectedLateRunner('');
   }, [runners, participants, selectedLateRunner, lateRunnerName]);
 
+  // Remove runner from race
+  const handleRemoveRunner = useCallback((runnerId: string) => {
+    setParticipants((prev) => prev.filter((p) => p.runnerId !== runnerId));
+  }, []);
+
+  // Add runner on review screen
+  const handleAddRunnerReview = useCallback(() => {
+    const now = Date.now();
+
+    if (selectedReviewRunner) {
+      // Adding an existing registered runner
+      const runner = runners.find((r) => r.id === selectedReviewRunner);
+      if (runner && !participants.some((p) => p.runnerId === runner.id)) {
+        const newParticipant: LiveParticipant = {
+          runnerId: runner.id,
+          repoId: runner.id,
+          runnerName: runner.name,
+          smallLoops: 0,
+          mediumLoops: 0,
+          longLoops: 0,
+          startTime: now,
+          finishTime: 0, // Will need to be edited
+          status: 'completed',
+        };
+        setParticipants((prev) => [...prev, newParticipant]);
+      }
+    } else if (reviewRunnerName.trim()) {
+      // Adding a guest with a name
+      const guestId = `guest-${now}-${Math.random().toString(36).substring(2, 7)}`;
+      const newParticipant: LiveParticipant = {
+        runnerId: guestId,
+        repoId: 'guest',
+        runnerName: reviewRunnerName.trim(),
+        nickname: reviewRunnerName.trim(),
+        smallLoops: 0,
+        mediumLoops: 0,
+        longLoops: 0,
+        startTime: now,
+        finishTime: 0, // Will need to be edited
+        status: 'completed',
+      };
+      setParticipants((prev) => [...prev, newParticipant]);
+    }
+
+    // Reset modal state
+    setShowAddRunnerReview(false);
+    setReviewRunnerName('');
+    setSelectedReviewRunner('');
+  }, [runners, participants, selectedReviewRunner, reviewRunnerName]);
+
   // End run and go to review
   const handleEndRun = () => {
     setIsRunning(false);
@@ -396,18 +457,14 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
 
   // Save results to GitHub
   const handleSaveResults = async () => {
+    setIsSaving(true);
     try {
       // Use the original date if re-uploading, otherwise current date
       const dateToUse = reUploadDate ? new Date(reUploadDate) : new Date();
 
-      if (!racePhoto) {
-        alert('Please take/upload a race photo first!');
-        return;
-      }
-
       await createRunResult(octokit, {
         date: dateToUse,
-        photoBlob: racePhoto,
+        photoBlob: racePhoto || undefined,
         participants: participants.map((p) => ({
           runnerId: p.runnerId, // Use full runnerId for conversion logic
           nickname: p.nickname,
@@ -438,6 +495,8 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
     } catch (error) {
       console.error('Failed to save results:', error);
       alert('Failed to save results. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -612,13 +671,20 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
         />
 
         {/* Add Late Runner Button */}
-        <div className="mt-6 flex justify-center gap-4">
+        <div className="mt-6 flex justify-center gap-4 flex-wrap">
           <Button
             onClick={() => setShowAddLateRunner(true)}
             variant="secondary"
             size="sm"
           >
             ➕ Add Late Runner
+          </Button>
+          <Button
+            onClick={() => setShowRemoveRunner(true)}
+            variant="secondary"
+            size="sm"
+          >
+            ➖ Remove Runner
           </Button>
           <Button
             onClick={() => setShowCancelConfirm(true)}
@@ -734,6 +800,50 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
             </div>
           </div>
         )}
+
+        {/* Remove Runner Modal */}
+        {showRemoveRunner && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-600 shadow-2xl max-h-[80vh] overflow-y-auto">
+              <h3 className="text-xl font-bold mb-4 text-orange">Remove Runner</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Select a runner to remove from this race. Their time and laps will be discarded.
+              </p>
+
+              {participants.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No runners in the race.
+                </div>
+              ) : (
+                <div className="space-y-2 mb-4">
+                  {participants.map((p) => (
+                    <button
+                      key={p.runnerId}
+                      onClick={() => {
+                        if (confirm(`Remove ${p.runnerName} from the race?`)) {
+                          handleRemoveRunner(p.runnerId);
+                          setShowRemoveRunner(false);
+                        }
+                      }}
+                      className="w-full text-left p-3 bg-gray-700 hover:bg-red-900/50 rounded-lg border border-gray-600 hover:border-red-500 transition-colors flex items-center justify-between"
+                    >
+                      <span className="text-white">{p.runnerName}</span>
+                      <span className="text-red-400 text-sm">✕ Remove</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <Button
+                onClick={() => setShowRemoveRunner(false)}
+                variant="secondary"
+                className="w-full"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -776,7 +886,19 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
                     ) : (
                       <span className="font-medium text-lg">{p.runnerName}</span>
                     )}
-                    <span className="text-sm text-gray-400">{isGuest ? '(Guest)' : ''}</span>
+                    <div className="flex items-center gap-2">
+                      {isGuest && <span className="text-sm text-gray-400">(Guest)</span>}
+                      <button
+                        onClick={() => {
+                          if (confirm(`Remove ${p.runnerName} from the results?`)) {
+                            handleRemoveRunner(p.runnerId);
+                          }
+                        }}
+                        className="px-2 py-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
                   </div>
 
                   {/* Time Edit */}
@@ -941,6 +1063,95 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
           </div>
         </div>
 
+        {/* Add Runner Button (Review) */}
+        <div className="mb-6">
+          <Button
+            onClick={() => setShowAddRunnerReview(true)}
+            variant="secondary"
+            size="sm"
+          >
+            ➕ Add Runner
+          </Button>
+        </div>
+
+        {/* Add Runner Modal (Review) */}
+        {showAddRunnerReview && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-600 shadow-2xl">
+              <h3 className="text-xl font-bold mb-4 text-orange">Add Runner</h3>
+
+              {/* Select existing runner */}
+              <div className="mb-4">
+                <label className="block text-sm font-semibold mb-2 text-gray-300">
+                  Select Registered Runner
+                </label>
+                <select
+                  value={selectedReviewRunner}
+                  onChange={(e) => {
+                    setSelectedReviewRunner(e.target.value);
+                    if (e.target.value) setReviewRunnerName('');
+                  }}
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white text-base"
+                >
+                  <option value="">-- Select --</option>
+                  {runners
+                    .filter((r) => !participants.some((p) => p.runnerId === r.id))
+                    .map((runner) => (
+                      <option key={runner.id} value={runner.id}>
+                        {runner.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="text-center text-gray-500 text-sm my-3">— OR —</div>
+
+              {/* Add guest */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold mb-2 text-gray-300">
+                  Add Guest (Name)
+                </label>
+                <input
+                  type="text"
+                  value={reviewRunnerName}
+                  onChange={(e) => {
+                    setReviewRunnerName(e.target.value);
+                    if (e.target.value) setSelectedReviewRunner('');
+                  }}
+                  placeholder="e.g. Sarah"
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white text-base placeholder:text-gray-500"
+                />
+              </div>
+
+              <p className="text-gray-400 text-sm mb-4">
+                ⚠️ Added runners will have 0:00 time and 0 loops. Edit them after adding.
+              </p>
+
+              {/* Actions */}
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => {
+                    setShowAddRunnerReview(false);
+                    setReviewRunnerName('');
+                    setSelectedReviewRunner('');
+                  }}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleAddRunnerReview}
+                  variant="success"
+                  disabled={!selectedReviewRunner && !reviewRunnerName.trim()}
+                  className="flex-1"
+                >
+                  Add Runner
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           {/* Re-Upload Banner */}
@@ -1049,10 +1260,17 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
         </div>
 
         <div className="flex gap-4">
-          <Button onClick={handleSaveResults} variant="success" size="lg">
-            💾 Save to GitHub
+          <Button onClick={handleSaveResults} variant="success" size="lg" disabled={isSaving}>
+            {isSaving ? (
+              <>
+                <span className="animate-spin inline-block mr-2">⏳</span>
+                Saving...
+              </>
+            ) : (
+              '💾 Save to GitHub'
+            )}
           </Button>
-          <Button onClick={() => setState('running')} variant="secondary">
+          <Button onClick={() => setState('running')} variant="secondary" disabled={isSaving}>
             ← Back to Tracking
           </Button>
         </div>
