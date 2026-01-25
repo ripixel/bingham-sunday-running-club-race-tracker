@@ -210,6 +210,7 @@ export async function createRunResult(
   data: {
     date: Date;
     photoBlob?: Blob;  // Optional - website has fallback SVG
+    existingPhotoUrl?: string; // Preserve existing photo from staged run if no new photo
     title?: string;
     description?: string;
     participants: Array<{
@@ -232,8 +233,8 @@ export async function createRunResult(
     const filesToCreate: Array<{ path: string; content: string; isBase64?: boolean }> = [];
     const runnerIdMap: Record<string, string> = {}; // guest-xxx -> new-runner-id
 
-    // 1. Prepare race photo blob (if provided)
-    let photoUrl: string | undefined;
+    // 1. Prepare race photo blob (if provided), or use existing photo URL
+    let photoUrl: string | undefined = data.existingPhotoUrl;
     if (data.photoBlob) {
       const photoPath = `assets/images/races/${dateStr}.jpg`;
       const photoArrayBuffer = await data.photoBlob.arrayBuffer();

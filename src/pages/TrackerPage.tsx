@@ -59,6 +59,7 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
   const [stagedRuns, setStagedRuns] = useState<StagedRun[]>([]);
   const [isLoadingStagedRuns, setIsLoadingStagedRuns] = useState(false);
   const [reUploadDate, setReUploadDate] = useState<string | null>(null); // Track if we're re-uploading
+  const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null); // Preserve photo from staged run
 
   // Save loading state
   const [isSaving, setIsSaving] = useState(false);
@@ -465,6 +466,7 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
       await createRunResult(octokit, {
         date: dateToUse,
         photoBlob: racePhoto || undefined,
+        existingPhotoUrl: existingPhotoUrl || undefined,
         participants: participants.map((p) => ({
           runnerId: p.runnerId, // Use full runnerId for conversion logic
           nickname: p.nickname,
@@ -490,6 +492,7 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
       setRunTitle('');
       setRunDescription('');
       setReUploadDate(null);
+      setExistingPhotoUrl(null);
       setImmersiveMode?.(false);
       localStorage.removeItem('current_run_state');
     } catch (error) {
@@ -553,6 +556,8 @@ export function TrackerPage({ octokit, setImmersiveMode }: TrackerPageProps) {
     setRunDescription(run.body || '');
     // Use the full dateTime to preserve original time, not just the date
     setReUploadDate(run.dateTime);
+    // Preserve the existing photo URL so we don't lose it if no new photo is uploaded
+    setExistingPhotoUrl(run.mainPhoto || null);
     setShowReUploadModal(false);
     setState('review');
   };
