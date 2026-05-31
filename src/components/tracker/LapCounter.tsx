@@ -1,5 +1,5 @@
 import { Button } from '../ui/Button';
-import { LOOP_DISTANCES } from '../../types/result';
+import { APPROACH_DISTANCE, LOOP_DISTANCES } from '../../types/result';
 import type { LiveParticipant } from '../../types/result';
 
 interface LapCounterProps {
@@ -13,10 +13,17 @@ interface LapCounterProps {
   onResume: (runnerId: string) => void;
 }
 
-const calculateDistance = (smallLoops: number, mediumLoops: number, longLoops: number): number =>
-  smallLoops * LOOP_DISTANCES.small +
-  mediumLoops * LOOP_DISTANCES.medium +
-  longLoops * LOOP_DISTANCES.long;
+// Helper function for distance calculation
+// Includes the approach distance (to/from start) when there are any loops
+const calculateDistance = (smallLoops: number, mediumLoops: number, longLoops: number): number => {
+  const totalLoops = smallLoops + mediumLoops + longLoops;
+  const loopDistance =
+    smallLoops * LOOP_DISTANCES.small +
+    mediumLoops * LOOP_DISTANCES.medium +
+    longLoops * LOOP_DISTANCES.long;
+  // Only add approach distance if there are any loops
+  return totalLoops > 0 ? APPROACH_DISTANCE + loopDistance : 0;
+};
 
 export function LapCounter({
   participant,

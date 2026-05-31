@@ -46,6 +46,7 @@ Defined in `src/types/result.ts`:
 - Small: 0.8 km (pink)
 - Medium: 1.0 km (green)
 - Long: 1.2 km (blue)
+- Approach: 0.55 km added once per participant (not per loop)
 
 ### Environment variables
 
